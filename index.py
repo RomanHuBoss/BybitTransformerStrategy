@@ -26,7 +26,7 @@ async def get_currency_pairs():
     return symbolsList.get_bybit_symbols_list(1000)
 
 @app.get("/predict_info")
-async def predict_info(symbol: str, timeframe: int, threshold: float = 0.75, max_prob_no_trade: float = 0.2):
+async def predict_info(symbol: str, timeframe: int, threshold: float = 0.7, max_prob_no_trade: float = 0.3):
     now = time.time()
     cache_key = f"{symbol}_{timeframe}_{threshold}_{max_prob_no_trade}"
     cache_entry = CACHE.get(cache_key)
@@ -35,7 +35,7 @@ async def predict_info(symbol: str, timeframe: int, threshold: float = 0.75, max
         try:
             raw = get_bybit_candles(symbol, timeframe=timeframe, candles_num=200)
             df = bybit_candles_to_df(raw)
-            dynamic_predictor = Predictor(model_folder="artifacts/model3")
+            dynamic_predictor = Predictor(model_folder="artifacts")
 
             result = dynamic_predictor.predict(df)
             CACHE[cache_key] = {
@@ -55,6 +55,9 @@ async def predict_info(symbol: str, timeframe: int, threshold: float = 0.75, max
         "confidences": [],
         "probabilities": [],
     }
+
+    if result is None:
+        return {"error": "Недостаточно данных для генерации сигнала"}
 
     for tp_sl, cls, conf, probs in zip(result["tp_sl_pairs"], result["classes"], result["confidences"],
                                        result["probabilities"]):

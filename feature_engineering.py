@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 import logging
-import os
+from numba import njit
 import ta
 import ta.trend
 import ta.momentum
@@ -267,13 +267,28 @@ class FeatureEngineer:
         ).shift(CFG.train.lookahead + 14)
 
         # 45. Hurst Exponent (трендовость или шум)
-        def hurst(ts):
-            lags = range(2, 20)
-            tau = [np.std(np.subtract(ts[lag:], ts[:-lag])) for lag in lags]
-            poly = np.polyfit(np.log(lags), np.log(tau), 1)
-            return poly[0]
+        @njit
+        def fast_hurst(ts):
+            lags = np.arange(2, 20)
+            tau = np.empty(len(lags))
+            for i in range(len(lags)):
+                lag = lags[i]
+                tau[i] = np.std(ts[lag:] - ts[:-lag])
 
-        df['hurst_30'] = df['close'].rolling(30).apply(hurst).shift(CFG.train.lookahead + 29)
+            log_lags = np.log(lags)
+            log_tau = np.log(tau)
+
+            # Оценка наклона (slope) вручную
+            n = len(log_lags)
+            sum_x = np.sum(log_lags)
+            sum_y = np.sum(log_tau)
+            sum_xx = np.sum(log_lags * log_lags)
+            sum_xy = np.sum(log_lags * log_tau)
+
+            slope = (n * sum_xy - sum_x * sum_y) / (n * sum_xx - sum_x * sum_x)
+            return slope
+
+        df['hurst_30'] = df['close'].rolling(30).apply(fast_hurst, raw=True).shift(shift + 29)
 
         # 46. Bar Strength Ratio (текущая сила свечи к предыдущим)
         body = (df['close'] - df['open']) / (df['high'] - df['low'] + 1e-6)

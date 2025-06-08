@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-
+from config import CFG
 
 class DirectionalLabelGenerator:
     """
@@ -29,7 +29,7 @@ class DirectionalLabelGenerator:
 
         N = len(close)
         num_pairs = len(self.tp_sl_levels)
-        Y = np.ones((N, num_pairs), dtype=int)  # по умолчанию — no-trade
+        Y = np.full((N, num_pairs), CFG.action2label["no-trade"], dtype=int)
 
         for i in range(N - self.lookahead):
             entry_price = close[i]
@@ -67,16 +67,10 @@ class DirectionalLabelGenerator:
 
                 # === Назначение метки ===
                 if long_hit == "tp":
-                    Y[i, j] = 2  # long
+                    Y[i, j] = CFG.action2label["long"]
                 elif short_hit == "tp":
-                    Y[i, j] = 0  # short
-                # иначе — no-trade (1)
+                    Y[i, j] = CFG.action2label["short"]
+                # иначе — no-trade
 
         return Y
 
-def generate_binary_labels(Y: np.ndarray) -> np.ndarray:
-    """
-    Преобразует многоклассовые метки в бинарные:
-    1 — сигнал (SHORT или LONG), 0 — NO TRADE
-    """
-    return np.isin(Y, [0, 2]).astype(int)

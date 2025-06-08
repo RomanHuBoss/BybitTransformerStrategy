@@ -8,6 +8,8 @@ from services.get_bybit_candles import get_bybit_candles
 from services.bybit_candles_handlers import  bybit_candles_to_df
 from services.bybit_symbols_list import BybitSymbolsList
 from predictor import Predictor
+from collections import Counter
+from config import CFG
 
 app = FastAPI()
 
@@ -50,21 +52,34 @@ async def predict_info(symbol: str, timeframe: int, threshold: float = 0.65):
         "tp_sl_pairs": [],
         "classes": [],
         "confidences": [],
+        "probabilities": [],
     }
 
-    for tp_sl, cls, conf in zip(result["tp_sl_pairs"], result["classes"], result["confidences"]):
-        if conf >= threshold and cls in [0, 1]:  # cls=2 — это "нет сигнала"
+    raw_counter = Counter(cls for cls in result["classes"])
+
+    for tp_sl, cls, conf, probs in zip(result["tp_sl_pairs"], result["classes"], result["confidences"],
+                                       result["probabilities"]):
+
+        prob_no_trade = probs[CFG.action2label["no-trade"]]  # вероятность класса no-trade
+        MAX_PROB_NO_TRADE = 0.2
+
+        # Условие: модель уверена (conf >= threshold) и margin достаточно велик
+        if prob_no_trade < MAX_PROB_NO_TRADE and conf >= threshold and cls in [CFG.action2label["short"], CFG.action2label["long"]]:
             filtered["tp_sl_pairs"].append(tp_sl)
             filtered["classes"].append(cls)
             filtered["confidences"].append(conf)
+            filtered["probabilities"].append(probs)
 
-    return {
+    result = {
         "symbol": symbol,
         "timeframe": timeframe,
         "threshold": threshold,
         "timestamp": CACHE[cache_key]["last_update"],
-        "predictions": filtered
+        "predictions": filtered,
     }
+    print(result)
+
+    return result
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))

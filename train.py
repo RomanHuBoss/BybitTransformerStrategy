@@ -84,7 +84,12 @@ class Trainer:
             classes=np.unique(flat_y),
             y=flat_y
         )
-        custom_multipliers = [5.0, 1.0, 5.0]
+
+        custom_multipliers = [
+            5.0 if i in [CFG.action2label["short"], CFG.action2label["long"]] else 1.0
+            for i in range(3)
+        ]
+
         weights = [weights[i] * custom_multipliers[i] for i in range(len(weights))]
         logging.info(f"Веса классов (для CrossEntropyLoss): {weights}")
 
@@ -135,9 +140,9 @@ class Trainer:
             self.scheduler.step(val_score["profit_f1"])
 
             logging.info(f"Эпоха {epoch} | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | F1_macro: {val_score['f1_macro']:.4f} | Profit Acc: {val_score['profit_accuracy']:.4f} | Profit F1: {val_score['profit_f1']:.4f} | ROC-AUC: {val_score['roc_auc']:.4f}")
-            logging.info(f"[Класс 0 | SHORT]: precision={val_score['precision'][0]:.3f} recall={val_score['recall'][0]:.3f} f1={val_score['f1'][0]:.3f}")
-            logging.info(f"[Класс 1 | no-trade]: precision={val_score['precision'][1]:.3f} recall={val_score['recall'][1]:.3f} f1={val_score['f1'][1]:.3f}")
-            logging.info(f"[Класс 2 | LONG]: precision={val_score['precision'][2]:.3f} recall={val_score['recall'][2]:.3f} f1={val_score['f1'][2]:.3f}")
+            logging.info(f"[Класс {CFG.action2label["short"]} | SHORT]: precision={val_score['precision'][0]:.3f} recall={val_score['recall'][0]:.3f} f1={val_score['f1'][0]:.3f}")
+            logging.info(f"[Класс {CFG.action2label["no-trade"]} | no-trade]: precision={val_score['precision'][1]:.3f} recall={val_score['recall'][1]:.3f} f1={val_score['f1'][1]:.3f}")
+            logging.info(f"[Класс {CFG.action2label["long"]} | LONG]: precision={val_score['precision'][2]:.3f} recall={val_score['recall'][2]:.3f} f1={val_score['f1'][2]:.3f}")
 
             if val_score["profit_f1"] > best_score:
                 best_score = val_score["profit_f1"]

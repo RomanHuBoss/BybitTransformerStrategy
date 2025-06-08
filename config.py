@@ -14,7 +14,7 @@ class Paths:
 class TrainConfig:
     device = "cuda" if torch.cuda.is_available() else "cpu"
     timeframe = 15  # таймфрейм в минутах
-    lr = 1e-4
+    lr = 1e-5
     batch_size = 512
     epochs = 300
     patience = 30
@@ -48,14 +48,10 @@ class DefaultModelConfig:
 
 class SL_TP_Config:
     tp_sl_levels = [
-        (0.02, 0.01),
-        (0.03, 0.01),
-        (0.03, 0.015),
-        (0.045, 0.015),
-        (0.04, 0.02),
-        (0.06, 0.02),
-        (0.05, 0.025),
-        (0.075, 0.025),
+        (0.02, 0.01), (0.025, 0.01), (0.03, 0.01), (0.035, 0.01), (0.04, 0.01),
+        (0.03, 0.015), (0.04, 0.015), (0.045, 0.015), (0.05, 0.015), (0.06, 0.015),
+        (0.04, 0.02), (0.05, 0.02), (0.06, 0.02), (0.07, 0.02), (0.08, 0.02),
+        (0.05, 0.025), (0.06, 0.025), (0.07, 0.025), (0.08, 0.025), (0.09, 0.025), (0.10, 0.025),
     ]
 
 CFG = SimpleNamespace(
@@ -63,4 +59,6 @@ CFG = SimpleNamespace(
     train=TrainConfig(),
     tp_sl=SL_TP_Config(),
     default_model_config=DefaultModelConfig(),
+    label2action={0: "short", 1: "no-trade", 2: "long"},
+    action2label={"short": 0, "no-trade": 1, "long": 2},
 )

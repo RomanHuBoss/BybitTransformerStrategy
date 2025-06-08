@@ -179,111 +179,129 @@
       </div>
     </div>
   </div>
-  <script>
-    let currentSort = { col: null, dir: 'desc' };
-    function sortRecommendationsBy(colIndex) {
-      const tbody = document.querySelector("#dialogScrollable tbody");
-      const rows = Array.from(tbody.querySelectorAll("tr"));
-      const parseVal = (cell) => parseFloat(cell.textContent.trim().replace('%', '')) || 0;
-      const getCellVal = (row) => parseVal(row.children[colIndex - 1]);
-      const newDir = (currentSort.col === colIndex && currentSort.dir === 'desc') ? 'asc' : 'desc';
-      currentSort = { col: colIndex, dir: newDir };
-      rows.sort((a, b) => {
-        const valA = getCellVal(a), valB = getCellVal(b);
-        return newDir === 'asc' ? valA - valB : valB - valA;
-      });
-      tbody.innerHTML = '';
-      rows.forEach((r, i) => {
-        r.classList.remove('even', 'odd');
-        r.classList.add(i % 2 === 0 ? 'even' : 'odd');
-        tbody.appendChild(r);
-      });
-    }
+<script>
+  const label2action = {
+    0: "short",
+    1: "no-trade",
+    2: "long"
+  };
 
-    document.addEventListener('DOMContentLoaded', () => {
-      const rangeInput = document.getElementById('pairRange');
-      const pairCountSpan = document.getElementById('pairCount');
-      const thresholdSlider = document.getElementById('threshold');
-      const thresholdValueSpan = document.getElementById('thresholdValue');
-      const TIMEFRAME = 15;
+  let currentSort = { col: null, dir: 'desc' };
+  function sortRecommendationsBy(colIndex) {
+    const tbody = document.querySelector("#dialogScrollable tbody");
+    const rows = Array.from(tbody.querySelectorAll("tr"));
+    const parseVal = (cell) => parseFloat(cell.textContent.trim().replace('%', '')) || 0;
+    const getCellVal = (row) => parseVal(row.children[colIndex - 1]);
+    const newDir = (currentSort.col === colIndex && currentSort.dir === 'desc') ? 'asc' : 'desc';
+    currentSort = { col: colIndex, dir: newDir };
+    rows.sort((a, b) => {
+      const valA = getCellVal(a), valB = getCellVal(b);
+      return newDir === 'asc' ? valA - valB : valB - valA;
+    });
+    tbody.innerHTML = '';
+    rows.forEach((r, i) => {
+      r.classList.remove('even', 'odd');
+      r.classList.add(i % 2 === 0 ? 'even' : 'odd');
+      tbody.appendChild(r);
+    });
+  }
 
-      thresholdSlider.addEventListener('input', () => {
-        thresholdValueSpan.textContent = thresholdSlider.value;
-        fetchCurrencyPairs();
-      });
+  document.addEventListener('DOMContentLoaded', () => {
+    const rangeInput = document.getElementById('pairRange');
+    const pairCountSpan = document.getElementById('pairCount');
+    const thresholdSlider = document.getElementById('threshold');
+    const thresholdValueSpan = document.getElementById('thresholdValue');
+    const TIMEFRAME = 15;
 
-      rangeInput.addEventListener('input', (e) => {
-        pairCountSpan.textContent = e.target.value;
-        fetchCurrencyPairs();
-      });
+    thresholdSlider.addEventListener('input', () => {
+      thresholdValueSpan.textContent = thresholdSlider.value;
+      fetchCurrencyPairs();
+    });
 
-      async function fetchCurrencyPairs() {
-        try {
-          document.getElementById('errorBox').style.display = 'none';
-          const response = await fetch('/get_currency_pairs');
-          const data = await response.json();
-          const pairLimit = parseInt(rangeInput.value);
-          const threshold = thresholdSlider.value;
-          const grid = document.getElementById('currencyGrid');
-          const spinnerContainer = document.getElementById('spinnerContainer');
-          const pageTitle = document.getElementById('pageTitle');
-          const settings = document.getElementById('settings');
-          grid.innerHTML = '';
+    rangeInput.addEventListener('input', (e) => {
+      pairCountSpan.textContent = e.target.value;
+      fetchCurrencyPairs();
+    });
 
-          for (let i = 0; i < Math.min(pairLimit, data.length); i++) {
-            const pair = data[i];
-            const tile = document.createElement('div');
-            tile.className = 'tile gray';
-            tile.textContent = pair;
+    async function fetchCurrencyPairs() {
+      try {
+        document.getElementById('errorBox').style.display = 'none';
+        const response = await fetch('/get_currency_pairs');
+        const data = await response.json();
+        const pairLimit = parseInt(rangeInput.value);
+        const threshold = thresholdSlider.value;
+        const grid = document.getElementById('currencyGrid');
+        const spinnerContainer = document.getElementById('spinnerContainer');
+        const pageTitle = document.getElementById('pageTitle');
+        const settings = document.getElementById('settings');
+        grid.innerHTML = '';
 
-            tile.addEventListener('click', async () => {
-              const res = await fetch(`/predict_info?symbol=${pair}&timeframe=${TIMEFRAME}&threshold=${threshold}`);
-              const result = await res.json();
-              const preds = result.predictions;
-              if (!preds || !preds.classes || preds.classes.length === 0) {
-                document.getElementById("dialogTitle").textContent = "Внимание!";
-                document.getElementById("dialogMeta").textContent = "Нет подходящих предложений с высокой вероятностью";
-                document.getElementById("dialogScrollable").innerHTML = "";
-                document.getElementById("dialog").style.display = "flex";
-                return;
+        for (let i = 0; i < Math.min(pairLimit, data.length); i++) {
+          const pair = data[i];
+          const tile = document.createElement('div');
+          tile.className = 'tile gray';
+          tile.textContent = pair;
+
+          tile.addEventListener('click', async () => {
+            const res = await fetch(`/predict_info?symbol=${pair}&timeframe=${TIMEFRAME}&threshold=${threshold}`);
+            const result = await res.json();
+            const preds = result.predictions;
+            if (!preds || !preds.classes || preds.classes.length === 0) {
+              document.getElementById("dialogTitle").textContent = "Внимание!";
+              document.getElementById("dialogMeta").textContent = "Нет подходящих предложений с высокой вероятностью";
+              document.getElementById("dialogScrollable").innerHTML = "";
+              document.getElementById("dialog").style.display = "flex";
+              return;
+            }
+
+            const rows = preds.tp_sl_pairs.map((pair, idx) => {
+              const [tp, sl] = pair;
+              const directionIdx = preds.classes[idx];
+              const direction = label2action[directionIdx];
+              const conf = (preds.confidences[idx] * 100).toFixed(1);
+              let arrow;
+              if (direction === "long") {
+                arrow = '<span style="color:green;">🟢 Long</span>';
+              } else if (direction === "short") {
+                arrow = '<span style="color:red;">🔴 Short</span>';
+              } else {
+                arrow = '➖';
               }
 
-              const rows = preds.tp_sl_pairs.map((pair, idx) => {
-                const [tp, sl] = pair;
-                const directionIdx = preds.classes[idx];
-                const conf = (preds.confidences[idx] * 100).toFixed(1);
-                const arrow = directionIdx === 0 ? '<span style="color:green;">🟢 Long</span>' :
-                              directionIdx === 1 ? '<span style="color:red;">🔴 Short</span>' : '➖';
-                return `<tr class='rec-row ${idx % 2 === 0 ? "even" : "odd"}'>
-                  <td>${arrow}</td>
-                  <td>${(tp * 100).toFixed(2)}</td>
-                  <td>${(sl * 100).toFixed(2)}</td>
-                  <td>${conf}%</td>
-                </tr>`;
-              }).join('');
+              return `<tr class='rec-row ${idx % 2 === 0 ? "even" : "odd"}'>
+                <td>${arrow}</td>
+                <td>${(tp * 100).toFixed(2)}</td>
+                <td>${(sl * 100).toFixed(2)}</td>
+                <td>${conf}%</td>
+              </tr>`;
+            }).join('');
 
-              document.getElementById("dialogTitle").textContent = pair;
-              document.getElementById("dialogMeta").innerHTML = `Время: ${new Date(result.timestamp * 1000).toLocaleString()}`;
-              document.getElementById("dialogScrollable").innerHTML = `
-                <table style="width: 100%;">
-                  <thead><tr>
-                    <th>Сигнал</th>
-                    <th onclick="sortRecommendationsBy(2)" style="cursor:pointer;">TP, %</th>
-                    <th onclick="sortRecommendationsBy(3)" style="cursor:pointer;">SL, %</th>
-                    <th onclick="sortRecommendationsBy(4)" style="cursor:pointer;">Вероятность</th>
-                  </tr></thead>
-                  <tbody>${rows}</tbody>
-                </table>`;
-              document.getElementById("dialog").style.display = "flex";
-            });
+            document.getElementById("dialogTitle").textContent = pair;
+            document.getElementById("dialogMeta").innerHTML = `Время: ${new Date(result.timestamp * 1000).toLocaleString()}`;
+            document.getElementById("dialogScrollable").innerHTML = `
+              <table style="width: 100%;">
+                <thead><tr>
+                  <th>Сигнал</th>
+                  <th onclick="sortRecommendationsBy(2)" style="cursor:pointer;">TP, %</th>
+                  <th onclick="sortRecommendationsBy(3)" style="cursor:pointer;">SL, %</th>
+                  <th onclick="sortRecommendationsBy(4)" style="cursor:pointer;">Вероятность</th>
+                </tr></thead>
+                <tbody>${rows}</tbody>
+              </table>`;
+            document.getElementById("dialog").style.display = "flex";
+          });
 
-            fetch(`/predict_info?symbol=${pair}&timeframe=${TIMEFRAME}&threshold=${threshold}`)
-              .then(r => r.json())
-              .then(data => {
+          fetch(`/predict_info?symbol=${pair}&timeframe=${TIMEFRAME}&threshold=${threshold}`)
+            .then(r => r.json())
+            .then(data => {
                 const preds = data.predictions;
-                const hasSignal = preds && preds.classes.some((cls, i) =>
-                  cls !== 2 && preds.confidences[i] >= threshold
-                );
+
+                const signalCount = preds.classes.reduce((acc, cls, i) =>
+                  acc + ((label2action[cls] !== "no-trade" && preds.confidences[i] >= threshold) ? 1 : 0), 0);
+
+                tile.textContent = `${pair}\n(${signalCount})`;
+
+                const hasSignal = signalCount > 0;
                 if (hasSignal) {
                   tile.classList.remove('gray');
                   tile.classList.add('green', 'flash-green');
@@ -292,52 +310,52 @@
                   tile.classList.remove('green', 'flash-green');
                   tile.classList.add('gray');
                 }
-              });
-
-            grid.appendChild(tile);
-          }
-
-          spinnerContainer.style.display = 'none';
-          pageTitle.style.display = 'block';
-          settings.style.display = 'flex';
-          grid.style.display = 'grid';
-
-        } catch (error) {
-          document.getElementById('errorBox').style.display = 'flex';
-          console.error('Ошибка загрузки:', error);
-        }
-      }
-
-      document.getElementById('retryButton').addEventListener('click', fetchCurrencyPairs);
-
-      thresholdValueSpan.textContent = thresholdSlider.value;
-      pairCountSpan.textContent = rangeInput.value;
-      fetchCurrencyPairs();
-
-      setInterval(() => {
-        const tiles = document.querySelectorAll('.tile');
-        const threshold = thresholdSlider.value;
-        tiles.forEach(tile => {
-          const symbol = tile.textContent.trim();
-          fetch(`/predict_info?symbol=${symbol}&timeframe=${TIMEFRAME}&threshold=${threshold}`)
-            .then(r => r.json())
-            .then(data => {
-              const preds = data.predictions;
-              const hasSignal = preds && preds.classes.some((cls, i) =>
-                cls !== 2 && preds.confidences[i] >= threshold
-              );
-              if (hasSignal) {
-                tile.classList.remove('gray');
-                tile.classList.add('green', 'flash-green');
-                setTimeout(() => tile.classList.remove('flash-green'), 2000);
-              } else {
-                tile.classList.remove('green', 'flash-green');
-                tile.classList.add('gray');
-              }
             });
-        });
-      }, TIMEFRAME * 60 * 1000);
-    });
-  </script>
+
+          grid.appendChild(tile);
+        }
+
+        spinnerContainer.style.display = 'none';
+        pageTitle.style.display = 'block';
+        settings.style.display = 'flex';
+        grid.style.display = 'grid';
+
+      } catch (error) {
+        document.getElementById('errorBox').style.display = 'flex';
+        console.error('Ошибка загрузки:', error);
+      }
+    }
+
+    document.getElementById('retryButton').addEventListener('click', fetchCurrencyPairs);
+
+    thresholdValueSpan.textContent = thresholdSlider.value;
+    pairCountSpan.textContent = rangeInput.value;
+    fetchCurrencyPairs();
+
+    setInterval(() => {
+      const tiles = document.querySelectorAll('.tile');
+      const threshold = thresholdSlider.value;
+      tiles.forEach(tile => {
+        const symbol = tile.textContent.trim();
+        fetch(`/predict_info?symbol=${symbol}&timeframe=${TIMEFRAME}&threshold=${threshold}`)
+          .then(r => r.json())
+          .then(data => {
+            const preds = data.predictions;
+            const hasSignal = preds && preds.classes.some((cls, i) =>
+              label2action[cls] !== "no-trade" && preds.confidences[i] >= threshold
+            );
+            if (hasSignal) {
+              tile.classList.remove('gray');
+              tile.classList.add('green', 'flash-green');
+              setTimeout(() => tile.classList.remove('flash-green'), 2000);
+            } else {
+              tile.classList.remove('green', 'flash-green');
+              tile.classList.add('gray');
+            }
+          });
+      });
+    }, TIMEFRAME * 60 * 1000);
+  });
+</script>
 </body>
 </html>

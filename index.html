@@ -1,361 +1,400 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8" />
-  <title>Валютные пары</title>
-  <style>
-    body {
-      font-family: "Roboto", sans-serif;
-      background-color: #f4f4f9;
-      margin: 0;
-      padding: 0;
-    }
-    .settings {
-      display: flex;
-      justify-content: center;
-      align-items: flex-start;
-      gap: 2rem;
-      margin: 1rem auto;
-      flex-wrap: wrap;
-    }
-    .setting-group {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-    }
-    .settings label {
-      margin-bottom: 0.25rem;
-      font-weight: 500;
-    }
-    .settings input[type=range] {
-      width: 250px;
-    }
-    .settings-output {
-      font-size: 0.9rem;
-      font-weight: 500;
-      color: #333;
-      margin-top: 0.3rem;
-    }
-    h1 {
-      text-align: center;
-      margin: 1.5rem 0 1rem;
-    }
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-      gap: 0.75rem;
-      padding: 1rem 2rem;
-    }
-    .tile {
-      background-color: #e0e0e0;
-      padding: 0.6rem;
-      border-radius: 6px;
-      text-align: center;
-      font-weight: 700;
-      font-size: 0.9rem;
-      transition: background-color 0.3s ease, transform 0.2s;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 70px;
-      word-break: break-word;
-      white-space: pre-wrap;
-    }
-    .tile:hover { transform: translateY(-2px); }
-    .tile.red { background-color: #ef9a9a; color: #b71c1c; }
-    .tile.green { background-color: #a5d6a7; color: #1b5e20; }
-    .tile.gray { background-color: #eeeeee; color: #424242; }
-    .flash-green { animation: flashGreen 2s ease-in-out; }
-    @keyframes flashGreen {
-      0% { background-color: #a5d6a7; }
-      50% { background-color: #dcedc8; }
-      100% { background-color: #a5d6a7; }
-    }
-    .centered-container {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-    }
-    .spinner {
-      border: 4px solid #f3f3f3;
-      border-top: 4px solid #3498db;
-      border-radius: 50%;
-      width: 40px;
-      height: 40px;
-      animation: spin 1s linear infinite;
-      margin-bottom: 1rem;
-    }
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-    #errorMessage {
-      background-color: #ffebee;
-      color: #c62828;
-      padding: 1rem 1.5rem;
-      border-radius: 6px;
-      font-weight: 500;
-      max-width: 400px;
-      margin: 1rem;
-      display: none;
-    }
-    #retryButton {
-      background-color: #1976d2;
-      color: #fff;
-      border: none;
-      border-radius: 4px;
-      padding: 0.6rem 1.2rem;
-      font-size: 1rem;
-      cursor: pointer;
-      margin-top: 1rem;
-    }
-    #dialog {
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.5);
-      display: none;
-      justify-content: center;
-      align-items: center;
-      z-index: 1000;
-    }
-    #dialogBox {
-      background: white;
-      padding: 1.5rem;
-      border-radius: 8px;
-      max-width: 500px;
-      width: 90%;
-      height: 600px;
-      display: flex;
-      flex-direction: column;
-    }
-    #dialogMeta {
-      margin-bottom: 0.5rem;
-      font-size: 0.9rem;
-      color: #666;
-    }
-    #dialogScrollable {
-      overflow-y: auto;
-      flex: 1;
-    }
-    .rec-row.even { background-color: #fafafa; }
-    .rec-row.odd { background-color: #ffffff; }
-    #dialogScrollable table td, #dialogScrollable table th {
-      border-bottom: 1px solid #ddd;
-    }
-  </style>
+    <meta charset="UTF-8"/>
+    <title>Валютные пары</title>
+    <style>
+        body {
+          font-family: "Roboto", sans-serif;
+          background-color: #f4f4f9;
+          margin: 0;
+          padding: 0;
+        }
+        .settings {
+          display: flex;
+          justify-content: center;
+          align-items: flex-start;
+          gap: 2rem;
+          margin: 1rem auto;
+          flex-wrap: wrap;
+        }
+        .setting-group {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+        }
+        .settings label {
+          margin-bottom: 0.25rem;
+          font-weight: 500;
+        }
+        .settings input[type=range] {
+          width: 250px;
+        }
+        .settings-output {
+          font-size: 0.9rem;
+          font-weight: 500;
+          color: #333;
+          margin-top: 0.3rem;
+        }
+        h1 {
+          text-align: center;
+          margin: 1.5rem 0 1rem;
+        }
+        .grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+          gap: 0.75rem;
+          padding: 1rem 2rem;
+        }
+        .tile {
+          background-color: #e0e0e0;
+          padding: 0.6rem;
+          border-radius: 6px;
+          text-align: center;
+          font-weight: 700;
+          font-size: 0.9rem;
+          transition: background-color 0.3s ease, transform 0.2s;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          height: 70px;
+          word-break: break-word;
+          white-space: pre-wrap;
+        }
+        .tile:hover { transform: translateY(-2px); }
+        .tile.red { background-color: #ef9a9a; color: #b71c1c; }
+        .tile.green { background-color: #a5d6a7; color: #1b5e20; }
+        .tile.gray { background-color: #eeeeee; color: #424242; }
+        .flash-green { animation: flashGreen 2s ease-in-out; }
+        .tile.yellow {background-color: #fff59d; color: #f57f17;}
+        @keyframes flashGreen {
+          0% { background-color: #a5d6a7; }
+          50% { background-color: #dcedc8; }
+          100% { background-color: #a5d6a7; }
+        }
+        .centered-container {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          height: 100vh;
+        }
+        .spinner {
+          border: 4px solid #f3f3f3;
+          border-top: 4px solid #3498db;
+          border-radius: 50%;
+          width: 40px;
+          height: 40px;
+          animation: spin 1s linear infinite;
+          margin-bottom: 1rem;
+        }
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+        #errorMessage {
+          background-color: #ffebee;
+          color: #c62828;
+          padding: 1rem 1.5rem;
+          border-radius: 6px;
+          font-weight: 500;
+          max-width: 400px;
+          margin: 1rem;
+          display: none;
+        }
+        #retryButton {
+          background-color: #1976d2;
+          color: #fff;
+          border: none;
+          border-radius: 4px;
+          padding: 0.6rem 1.2rem;
+          font-size: 1rem;
+          cursor: pointer;
+          margin-top: 1rem;
+        }
+        #dialog {
+          position: fixed;
+          inset: 0;
+          background: rgba(0,0,0,0.5);
+          display: none;
+          justify-content: center;
+          align-items: center;
+          z-index: 1000;
+        }
+        #dialogBox {
+          background: white;
+          padding: 1.5rem;
+          border-radius: 8px;
+          max-width: 500px;
+          width: 90%;
+          height: 600px;
+          display: flex;
+          flex-direction: column;
+        }
+        #dialogMeta {
+          margin-bottom: 0.5rem;
+          font-size: 0.9rem;
+          color: #666;
+        }
+        #dialogScrollable {
+          overflow-y: auto;
+          flex: 1;
+        }
+        .rec-row.even { background-color: #fafafa; }
+        .rec-row.odd { background-color: #ffffff; }
+        #dialogScrollable table td, #dialogScrollable table th {
+          border-bottom: 1px solid #ddd;
+        }
+    </style>
 </head>
 <body>
-  <h1 id="pageTitle" style="display: none;">Валютные пары</h1>
-  <div class="settings" id="settings" style="display: none;">
+<h1 id="pageTitle" style="display: none;">Валютные пары</h1>
+<div class="settings" id="settings" style="display: none;">
     <div class="setting-group">
-      <label for="pairRange">Количество валютных пар:</label>
-      <input type="range" id="pairRange" min="10" max="1000" step="10" value="10">
-      <div class="settings-output">Выбрано: <span id="pairCount">10</span></div>
+        <label for="pairRange">Количество валютных пар:</label>
+        <input type="range" id="pairRange" min="10" max="1000" step="10" value="10">
+        <div class="settings-output">Выбрано: <span id="pairCount">10</span></div>
     </div>
     <div class="setting-group">
-      <label for="threshold">Порог вероятности: <span id="thresholdValue">0.65</span></label>
-      <input type="range" id="threshold" min="0.3" max="0.9" step="0.05" value="0.65">
+        <label for="threshold">Порог уверенности в сделках: <span id="thresholdValue">0.65</span></label>
+        <input type="range" id="threshold" min="0.3" max="0.9" step="0.05" value="0.75">
     </div>
-  </div>
-  <div class="centered-container" id="spinnerContainer">
+</div>
+<div class="centered-container" id="spinnerContainer">
     <div class="spinner" id="spinner"></div>
     <div id="loadingText">Загрузка списка валютных пар...</div>
-  </div>
-  <div class="centered-container" id="errorBox" style="display: none;">
+</div>
+<div class="centered-container" id="errorBox" style="display: none;">
     <div id="errorMessage">Ошибка загрузки данных. Попробуйте позже.</div>
     <button id="retryButton">Повторить</button>
-  </div>
-  <div class="grid" id="currencyGrid" style="display: none;"></div>
-  <div id="dialog">
+</div>
+<div class="grid" id="currencyGrid" style="display: none;"></div>
+<div id="dialog">
     <div id="dialogBox">
-      <h2 id="dialogTitle">Торговые рекомендации</h2>
-      <div id="dialogMeta"></div>
-      <div id="dialogScrollable"></div>
-      <div style="text-align:right; margin-top:1rem;">
-        <button onclick="document.getElementById('dialog').style.display='none'">Закрыть</button>
-      </div>
+        <h2 id="dialogTitle">Торговые рекомендации</h2>
+        <div id="dialogMeta"></div>
+        <div id="dialogScrollable"></div>
+        <div style="text-align:right; margin-top:1rem;">
+            <button onclick="document.getElementById('dialog').style.display='none'">Закрыть</button>
+        </div>
     </div>
-  </div>
+</div>
 <script>
-  const label2action = {
-    0: "short",
-    1: "no-trade",
-    2: "long"
-  };
+    const label2action = {
+      0: "short",
+      1: "no-trade",
+      2: "long"
+    };
 
-  let currentSort = { col: null, dir: 'desc' };
-  function sortRecommendationsBy(colIndex) {
-    const tbody = document.querySelector("#dialogScrollable tbody");
-    const rows = Array.from(tbody.querySelectorAll("tr"));
-    const parseVal = (cell) => parseFloat(cell.textContent.trim().replace('%', '')) || 0;
-    const getCellVal = (row) => parseVal(row.children[colIndex - 1]);
-    const newDir = (currentSort.col === colIndex && currentSort.dir === 'desc') ? 'asc' : 'desc';
-    currentSort = { col: colIndex, dir: newDir };
-    rows.sort((a, b) => {
-      const valA = getCellVal(a), valB = getCellVal(b);
-      return newDir === 'asc' ? valA - valB : valB - valA;
-    });
-    tbody.innerHTML = '';
-    rows.forEach((r, i) => {
-      r.classList.remove('even', 'odd');
-      r.classList.add(i % 2 === 0 ? 'even' : 'odd');
-      tbody.appendChild(r);
-    });
-  }
-
-  document.addEventListener('DOMContentLoaded', () => {
-    const rangeInput = document.getElementById('pairRange');
-    const pairCountSpan = document.getElementById('pairCount');
-    const thresholdSlider = document.getElementById('threshold');
-    const thresholdValueSpan = document.getElementById('thresholdValue');
-    const TIMEFRAME = 15;
-
-    thresholdSlider.addEventListener('input', () => {
-      thresholdValueSpan.textContent = thresholdSlider.value;
-      fetchCurrencyPairs();
-    });
-
-    rangeInput.addEventListener('input', (e) => {
-      pairCountSpan.textContent = e.target.value;
-      fetchCurrencyPairs();
-    });
-
-    async function fetchCurrencyPairs() {
-      try {
-        document.getElementById('errorBox').style.display = 'none';
-        const response = await fetch('/get_currency_pairs');
-        const data = await response.json();
-        const pairLimit = parseInt(rangeInput.value);
-        const threshold = thresholdSlider.value;
-        const grid = document.getElementById('currencyGrid');
-        const spinnerContainer = document.getElementById('spinnerContainer');
-        const pageTitle = document.getElementById('pageTitle');
-        const settings = document.getElementById('settings');
-        grid.innerHTML = '';
-
-        for (let i = 0; i < Math.min(pairLimit, data.length); i++) {
-          const pair = data[i];
-          const tile = document.createElement('div');
-          tile.className = 'tile gray';
-          tile.textContent = pair;
-
-          tile.addEventListener('click', async () => {
-            const res = await fetch(`/predict_info?symbol=${pair}&timeframe=${TIMEFRAME}&threshold=${threshold}`);
-            const result = await res.json();
-            const preds = result.predictions;
-            if (!preds || !preds.classes || preds.classes.length === 0) {
-              document.getElementById("dialogTitle").textContent = "Внимание!";
-              document.getElementById("dialogMeta").textContent = "Нет подходящих предложений с высокой вероятностью";
-              document.getElementById("dialogScrollable").innerHTML = "";
-              document.getElementById("dialog").style.display = "flex";
-              return;
-            }
-
-            const rows = preds.tp_sl_pairs.map((pair, idx) => {
-              const [tp, sl] = pair;
-              const directionIdx = preds.classes[idx];
-              const direction = label2action[directionIdx];
-              const conf = (preds.confidences[idx] * 100).toFixed(1);
-              let arrow;
-              if (direction === "long") {
-                arrow = '<span style="color:green;">🟢 Long</span>';
-              } else if (direction === "short") {
-                arrow = '<span style="color:red;">🔴 Short</span>';
-              } else {
-                arrow = '➖';
-              }
-
-              return `<tr class='rec-row ${idx % 2 === 0 ? "even" : "odd"}'>
-                <td>${arrow}</td>
-                <td>${(tp * 100).toFixed(2)}</td>
-                <td>${(sl * 100).toFixed(2)}</td>
-                <td>${conf}%</td>
-              </tr>`;
-            }).join('');
-
-            document.getElementById("dialogTitle").textContent = pair;
-            document.getElementById("dialogMeta").innerHTML = `Время: ${new Date(result.timestamp * 1000).toLocaleString()}`;
-            document.getElementById("dialogScrollable").innerHTML = `
-              <table style="width: 100%;">
-                <thead><tr>
-                  <th>Сигнал</th>
-                  <th onclick="sortRecommendationsBy(2)" style="cursor:pointer;">TP, %</th>
-                  <th onclick="sortRecommendationsBy(3)" style="cursor:pointer;">SL, %</th>
-                  <th onclick="sortRecommendationsBy(4)" style="cursor:pointer;">Вероятность</th>
-                </tr></thead>
-                <tbody>${rows}</tbody>
-              </table>`;
-            document.getElementById("dialog").style.display = "flex";
-          });
-
-          fetch(`/predict_info?symbol=${pair}&timeframe=${TIMEFRAME}&threshold=${threshold}`)
-            .then(r => r.json())
-            .then(data => {
-                const preds = data.predictions;
-
-                const signalCount = preds.classes.reduce((acc, cls, i) =>
-                  acc + ((label2action[cls] !== "no-trade" && preds.confidences[i] >= threshold) ? 1 : 0), 0);
-
-                tile.textContent = `${pair}\n(${signalCount})`;
-
-                const hasSignal = signalCount > 0;
-                if (hasSignal) {
-                  tile.classList.remove('gray');
-                  tile.classList.add('green', 'flash-green');
-                  setTimeout(() => tile.classList.remove('flash-green'), 2000);
-                } else {
-                  tile.classList.remove('green', 'flash-green');
-                  tile.classList.add('gray');
-                }
-            });
-
-          grid.appendChild(tile);
-        }
-
-        spinnerContainer.style.display = 'none';
-        pageTitle.style.display = 'block';
-        settings.style.display = 'flex';
-        grid.style.display = 'grid';
-
-      } catch (error) {
-        document.getElementById('errorBox').style.display = 'flex';
-        console.error('Ошибка загрузки:', error);
-      }
+    let currentSort = { col: null, dir: 'desc' };
+    function sortRecommendationsBy(colIndex) {
+      const tbody = document.querySelector("#dialogScrollable tbody");
+      const rows = Array.from(tbody.querySelectorAll("tr"));
+      const parseVal = (cell) => parseFloat(cell.textContent.trim().replace('%', '')) || 0;
+      const getCellVal = (row) => parseVal(row.children[colIndex - 1]);
+      const newDir = (currentSort.col === colIndex && currentSort.dir === 'desc') ? 'asc' : 'desc';
+      currentSort = { col: colIndex, dir: newDir };
+      rows.sort((a, b) => {
+        const valA = getCellVal(a), valB = getCellVal(b);
+        return newDir === 'asc' ? valA - valB : valB - valA;
+      });
+      tbody.innerHTML = '';
+      rows.forEach((r, i) => {
+        r.classList.remove('even', 'odd');
+        r.classList.add(i % 2 === 0 ? 'even' : 'odd');
+        tbody.appendChild(r);
+      });
     }
 
-    document.getElementById('retryButton').addEventListener('click', fetchCurrencyPairs);
+    document.addEventListener('DOMContentLoaded', () => {
+      const rangeInput = document.getElementById('pairRange');
+      const pairCountSpan = document.getElementById('pairCount');
+      const thresholdSlider = document.getElementById('threshold');
+      const thresholdValueSpan = document.getElementById('thresholdValue');
+      const TIMEFRAME = 15;
 
-    thresholdValueSpan.textContent = thresholdSlider.value;
-    pairCountSpan.textContent = rangeInput.value;
-    fetchCurrencyPairs();
+      thresholdSlider.addEventListener('input', () => {
+        thresholdValueSpan.textContent = thresholdSlider.value;
+        fetchCurrencyPairs();
+      });
 
-    setInterval(() => {
-      const tiles = document.querySelectorAll('.tile');
-      const threshold = thresholdSlider.value;
-      tiles.forEach(tile => {
-        const symbol = tile.textContent.trim();
-        fetch(`/predict_info?symbol=${symbol}&timeframe=${TIMEFRAME}&threshold=${threshold}`)
-          .then(r => r.json())
-          .then(data => {
+      rangeInput.addEventListener('input', (e) => {
+        pairCountSpan.textContent = e.target.value;
+        fetchCurrencyPairs();
+      });
+
+      async function fetchCurrencyPairs() {
+        try {
+          document.getElementById('errorBox').style.display = 'none';
+          const response = await fetch('/get_currency_pairs');
+          const data = await response.json();
+          const pairLimit = parseInt(rangeInput.value);
+          const threshold = thresholdSlider.value;
+          const grid = document.getElementById('currencyGrid');
+          const spinnerContainer = document.getElementById('spinnerContainer');
+          const pageTitle = document.getElementById('pageTitle');
+          const settings = document.getElementById('settings');
+          grid.innerHTML = '';
+
+          for (let i = 0; i < Math.min(pairLimit, data.length); i++) {
+            const pair = data[i];
+            const tile = document.createElement('div');
+            tile.className = 'tile gray';
+            tile.textContent = pair;
+            tile.setAttribute("symbol", pair)
+
+            tile.addEventListener('click', async () => {
+              const res = await fetch(`/predict_info?symbol=${pair}&timeframe=${TIMEFRAME}&threshold=${threshold}`);
+              const result = await res.json();
+              const preds = result.predictions;
+              if (!preds || !preds.classes || preds.classes.length === 0) {
+                document.getElementById("dialogTitle").textContent = "Внимание!";
+                document.getElementById("dialogMeta").textContent = "Нет подходящих предложений с высокой уверенностью в сделках";
+                document.getElementById("dialogScrollable").innerHTML = "";
+                document.getElementById("dialog").style.display = "flex";
+                return;
+              }
+
+              const rows = preds.tp_sl_pairs.map((pair, idx) => {
+                const [tp, sl] = pair;
+                const directionIdx = preds.classes[idx];
+                const direction = label2action[directionIdx];
+                const conf = (preds.confidences[idx] * 100).toFixed(1);
+                let arrow;
+                if (direction === "long") {
+                  arrow = '<span style="color:green;">🟢 Long</span>';
+                } else if (direction === "short") {
+                  arrow = '<span style="color:red;">🔴 Short</span>';
+                } else {
+                  arrow = '➖';
+                }
+
+                return `<tr class='rec-row ${idx % 2 === 0 ? "even" : "odd"}'>
+                  <td>${arrow}</td>
+                  <td>${(tp * 100).toFixed(2)}</td>
+                  <td>${(sl * 100).toFixed(2)}</td>
+                  <td>${conf}%</td>
+                </tr>`;
+              }).join('');
+
+              document.getElementById("dialogTitle").textContent = pair;
+              document.getElementById("dialogMeta").innerHTML = `Время: ${new Date(result.timestamp * 1000).toLocaleString()}`;
+              document.getElementById("dialogScrollable").innerHTML = `
+                <table style="width: 100%;">
+                  <thead><tr>
+                    <th>Сигнал</th>
+                    <th onclick="sortRecommendationsBy(2)" style="cursor:pointer;">TP, %</th>
+                    <th onclick="sortRecommendationsBy(3)" style="cursor:pointer;">SL, %</th>
+                    <th onclick="sortRecommendationsBy(4)" style="cursor:pointer;">Уверенность</th>
+                  </tr></thead>
+                  <tbody>${rows}</tbody>
+                </table>`;
+              document.getElementById("dialog").style.display = "flex";
+            });
+
+            fetch(`/predict_info?symbol=${pair}&timeframe=${TIMEFRAME}&threshold=${threshold}`)
+              .then(r => r.json())
+              .then(data => {
+                  const preds = data.predictions;
+
+                  const signalCount = preds.classes.reduce((acc, cls, i) =>
+                    acc + ((label2action[cls] !== "no-trade" && preds.confidences[i] >= threshold) ? 1 : 0), 0);
+
+                  tile.textContent = `${pair}\n(${signalCount})`;
+
+                  const signals = preds.classes
+                    .map((cls, i) => ({
+                      type: label2action[cls],
+                      conf: preds.confidences[i]
+                    }))
+                    .filter(s => s.type !== "no-trade" && s.conf >= threshold);
+
+                  const hasLong = signals.some(s => s.type === "long");
+                  const hasShort = signals.some(s => s.type === "short");
+
+                  tile.classList.remove('green', 'red', 'yellow', 'gray', 'flash-green');
+
+                  if (hasLong && hasShort) {
+                    tile.classList.add('yellow');
+                  } else if (hasLong) {
+                    tile.classList.add('green', 'flash-green');
+                    setTimeout(() => tile.classList.remove('flash-green'), 2000);
+                  } else if (hasShort) {
+                    tile.classList.add('red');
+                  } else {
+                    tile.classList.add('gray');
+                  }
+              });
+
+            grid.appendChild(tile);
+          }
+
+          spinnerContainer.style.display = 'none';
+          pageTitle.style.display = 'block';
+          settings.style.display = 'flex';
+          grid.style.display = 'grid';
+
+        } catch (error) {
+          document.getElementById('errorBox').style.display = 'flex';
+          console.error('Ошибка загрузки:', error);
+        }
+      }
+
+      document.getElementById('retryButton').addEventListener('click', fetchCurrencyPairs);
+
+      thresholdValueSpan.textContent = thresholdSlider.value;
+      pairCountSpan.textContent = rangeInput.value;
+      fetchCurrencyPairs();
+
+      setInterval(async () => {
+        const tiles = document.querySelectorAll('.tile');
+        const threshold = parseFloat(document.getElementById('threshold').value);
+        const TIMEFRAME = 15;
+
+        for (const tile of tiles) {
+          const symbol = tile.getAttribute("symbol");
+          try {
+            const res = await fetch(`/predict_info?symbol=${symbol}&timeframe=${TIMEFRAME}&threshold=${threshold}`, {
+              cache: "no-store"
+            });
+            const data = await res.json();
+
             const preds = data.predictions;
-            const hasSignal = preds && preds.classes.some((cls, i) =>
-              label2action[cls] !== "no-trade" && preds.confidences[i] >= threshold
-            );
-            if (hasSignal) {
-              tile.classList.remove('gray');
+
+            const signals = preds.classes
+              .map((cls, i) => ({
+                type: label2action[cls],
+                conf: preds.confidences[i]
+              }))
+              .filter(s => s.type !== "no-trade" && s.conf >= threshold);
+
+            const hasLong = signals.some(s => s.type === "long");
+            const hasShort = signals.some(s => s.type === "short");
+
+            tile.classList.remove('green', 'red', 'yellow', 'gray', 'flash-green');
+
+            if (hasLong && hasShort) {
+              tile.classList.add('yellow');
+            } else if (hasLong) {
               tile.classList.add('green', 'flash-green');
               setTimeout(() => tile.classList.remove('flash-green'), 2000);
+            } else if (hasShort) {
+              tile.classList.add('red');
             } else {
-              tile.classList.remove('green', 'flash-green');
               tile.classList.add('gray');
             }
-          });
-      });
-    }, TIMEFRAME * 60 * 1000);
-  });
+
+            // Обновим текст — количество активных сигналов
+            tile.textContent = `${symbol}\n(${signals.length})`;
+
+          } catch (err) {
+            console.error(`Ошибка при обновлении ${symbol}:`, err);
+          }
+        }
+      }, 60 * 1000);
+
+    });
 </script>
 </body>
 </html>

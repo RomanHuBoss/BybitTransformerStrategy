@@ -85,13 +85,10 @@ class Trainer:
             y=flat_y
         )
 
-        custom_multipliers = [
-            5.0 if i in [CFG.action2label["short"], CFG.action2label["long"]] else 1.0
-            for i in range(3)
-        ]
+        # Логарифмическое сглаживание
+        weights = np.log1p(weights) * 2
 
-        weights = [weights[i] * custom_multipliers[i] for i in range(len(weights))]
-        logging.info(f"Веса классов (для CrossEntropyLoss): {weights}")
+        logging.info(f"Веса классов: {weights}")
 
         X = self.engineer.to_sequences(df_feat, CFG.train.window_size)
         min_len = min(len(X), len(Y))
@@ -126,7 +123,7 @@ class Trainer:
         self.model = MultiPairDirectionalClassifier(model_config=model_config, num_pairs=len(self.tp_sl_pairs)).to(self.device)
         self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=CFG.train.lr)
         self.scheduler = ReduceLROnPlateau(self.optimizer, **CFG.train.scheduler)
-        self.criterion = FocalLoss(alpha=torch.tensor(weights, dtype=torch.float32).to(self.device), gamma=2.0)
+        self.criterion = FocalLoss(alpha=torch.tensor(weights, dtype=torch.float32).to(self.device), gamma=1.5)
         self.calibration_temperature = 1.0
 
     def train(self):

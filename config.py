@@ -15,15 +15,15 @@ class TrainConfig:
     device = "cuda" if torch.cuda.is_available() else "cpu"
     timeframe = 15  # таймфрейм в минутах
     lr = 1e-5
-    batch_size = 512
+    batch_size = 256
     epochs = 300
-    patience = 30
+    patience = 40
     val_ratio = 0.2
-    window_size = 60     # сколько баров в одном обучающем примере
-    lookahead = 24       # горизонт TP/SL в барах
+    window_size = 100     # сколько баров в одном обучающем примере
+    lookahead = 16       # горизонт TP/SL в барах
 
     # Дополнительные параметры:
-    threshold = 0.7  # порог вероятности для генерации сигнала
+    threshold = 0.5  # порог вероятности для генерации сигнала
     calibrate_logits = True  # если True — калибровать вероятности (например, temperature scaling)
     use_selected_features_only = True  # использовать только важные признаки
     feature_importance_threshold = "mean"  # "mean", "median" или float
@@ -36,7 +36,7 @@ class TrainConfig:
 
 
 class DefaultModelConfig:
-    input_dim = 61  # будет обновлено автоматически, если use_selected_features_only=True
+    input_dim = 69  # будет обновлено автоматически, если use_selected_features_only=True
     hidden_dim = 192
     n_heads = 16
     n_layers = 4

@@ -257,25 +257,57 @@ class FeatureEngineer:
         df['upper_shadow_ratio'] = upper_shadow / (body + 1e-6)
         df['lower_shadow_ratio'] = lower_shadow / (body + 1e-6)
 
+        # === 💡 Новые продвинутые фичи из Kaggle (2024–2025) ===
+        # 44. Entropy of log returns (информационная насыщенность движения цены)
+        returns = np.log(df['close'] / df['close'].shift(1))
+        df['entropy_returns_15'] = returns.rolling(15).apply(
+            lambda x: -np.sum(
+                (p := np.histogram(x, bins=10, density=True)[0]) * np.log1p(p + 1e-6)
+            ) if len(x.dropna()) == 15 else np.nan
+        ).shift(CFG.train.lookahead + 14)
+
+        # 45. Hurst Exponent (трендовость или шум)
+        def hurst(ts):
+            lags = range(2, 20)
+            tau = [np.std(np.subtract(ts[lag:], ts[:-lag])) for lag in lags]
+            poly = np.polyfit(np.log(lags), np.log(tau), 1)
+            return poly[0]
+
+        df['hurst_30'] = df['close'].rolling(30).apply(hurst).shift(CFG.train.lookahead + 29)
+
+        # 46. Bar Strength Ratio (текущая сила свечи к предыдущим)
+        body = (df['close'] - df['open']) / (df['high'] - df['low'] + 1e-6)
+        body_mean = (df['close'].rolling(5).mean() - df['open'].rolling(5).mean() + 1e-6)
+        df['bar_strength_5'] = (body / body_mean).shift(CFG.train.lookahead + 4)
+
+        # 47. DMI (Directional Movement Index) — трендовая сила
+        adx = ta.trend.ADXIndicator(df['high'], df['low'], df['close'], window=14)
+        df['adx_14'] = adx.adx().shift(CFG.train.lookahead + 13)
+        df['plus_di_14'] = adx.adx_pos().shift(CFG.train.lookahead + 13)
+        df['minus_di_14'] = adx.adx_neg().shift(CFG.train.lookahead + 13)
+
+        # 48. Real Body to Range Ratio (альтернатива body_strength)
+        df['body_to_range'] = (
+            (df['close'] - df['open']).abs() / (df['high'] - df['low'] + 1e-6)
+        ).shift(CFG.train.lookahead)
+
+        # 49. Noise-to-Signal Ratio (волатильность vs истинный разброс)
+        atr = ta.volatility.AverageTrueRange(
+            high=df['high'],
+            low=df['low'],
+            close=df['close'],
+            window=20,
+            fillna=False
+        ).average_true_range()
+        df['signal_noise_ratio'] = (
+            df['close'].rolling(20).std() / (atr + 1e-6)
+        ).shift(CFG.train.lookahead + 19)
+
         # === Финализация ===
         df = df.replace([np.inf, -np.inf], np.nan).dropna()
         self.feature_columns = [col for col in df.columns if col not in [
             'open_time', 'open', 'high', 'low', 'close', 'volume', 'hour', 'minute'
         ]]
-
-        # print(df.describe())
-
-        import seaborn as sns
-        import matplotlib.pyplot as plt
-
-        # Создаем тепловую карту корреляции
-        # corr_matrix = df[self.feature_columns].corr()
-        # plt.figure(figsize=(12, 10))  # Указываем размер графика
-        # sns.heatmap(corr_matrix, annot=False, cmap='coolwarm', fmt=".2f")  # cmap - цветовая схема
-
-        # # Сохраняем график в файл (поддерживаются форматы: PNG, JPG, PDF, SVG и др.)
-        # plt.savefig('correlation_heatmap.png', dpi=300, bbox_inches='tight')  # dpi - качество изображения
-        # plt.close()  # Закрываем график, чтобы не выводился в блокноте (если нужно)
 
         # Масштабирование
         X = df[self.feature_columns]

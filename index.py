@@ -26,22 +26,23 @@ async def get_currency_pairs():
     return symbolsList.get_bybit_symbols_list(1000)
 
 @app.get("/predict_info")
-async def predict_info(symbol: str, timeframe: int, threshold: float = 0.65):
+async def predict_info(symbol: str, timeframe: int, threshold: float = 0.75, max_prob_no_trade: float = 0.2):
     now = time.time()
-    cache_key = f"{symbol}_{timeframe}_{threshold}"
+    cache_key = f"{symbol}_{timeframe}_{threshold}_{max_prob_no_trade}"
     cache_entry = CACHE.get(cache_key)
 
-    if not cache_entry or now - cache_entry["last_update"] > 300:
+    if not cache_entry or now - cache_entry["last_update"] > 30:
         try:
             raw = get_bybit_candles(symbol, timeframe=timeframe, candles_num=200)
             df = bybit_candles_to_df(raw)
-            dynamic_predictor = Predictor(model_folder="artifacts")
+            dynamic_predictor = Predictor(model_folder="artifacts/model3")
 
             result = dynamic_predictor.predict(df)
             CACHE[cache_key] = {
                 "last_update": now,
                 "result": result
             }
+
         except Exception as e:
             return JSONResponse({"error": f"Ошибка при получении данных: {str(e)}"}, status_code=500)
 
@@ -55,16 +56,13 @@ async def predict_info(symbol: str, timeframe: int, threshold: float = 0.65):
         "probabilities": [],
     }
 
-    raw_counter = Counter(cls for cls in result["classes"])
-
     for tp_sl, cls, conf, probs in zip(result["tp_sl_pairs"], result["classes"], result["confidences"],
                                        result["probabilities"]):
 
         prob_no_trade = probs[CFG.action2label["no-trade"]]  # вероятность класса no-trade
-        MAX_PROB_NO_TRADE = 0.2
 
         # Условие: модель уверена (conf >= threshold) и margin достаточно велик
-        if prob_no_trade < MAX_PROB_NO_TRADE and conf >= threshold and cls in [CFG.action2label["short"], CFG.action2label["long"]]:
+        if prob_no_trade < max_prob_no_trade and conf >= threshold and cls in [CFG.action2label["short"], CFG.action2label["long"]]:
             filtered["tp_sl_pairs"].append(tp_sl)
             filtered["classes"].append(cls)
             filtered["confidences"].append(conf)

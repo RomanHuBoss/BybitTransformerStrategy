@@ -43,7 +43,7 @@ class Predictor:
     def predict_class_distribution(self, df: pd.DataFrame):
         return self.engine.predict_class_distribution(df)
 
-    def predict_high_confidence_signals(self, df: pd.DataFrame, threshold: float = 0.8):
+    def predict_high_confidence_signals(self, df: pd.DataFrame, threshold: float = 0.75):
         proba = self.predict_proba(df)
         preds = np.argmax(proba, axis=1)
         confidences = np.max(proba, axis=1)

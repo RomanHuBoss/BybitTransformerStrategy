@@ -254,6 +254,10 @@ class Trainer:
             logits = self.model(X_batch)
             loss = self.criterion(logits.view(-1, 3), y_batch.view(-1))
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+            if torch.isnan(loss):
+                logging.error("NaN в функции потерь! Обучение остановлено.")
+                raise ValueError("NaN в функции потерь")
             self.optimizer.step()
             running_loss += loss.item() * X_batch.size(0)
         return running_loss / len(self.train_loader.dataset)

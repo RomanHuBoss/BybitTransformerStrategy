@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from imblearn.under_sampling import TomekLinks
-from sklearn.metrics import precision_recall_fscore_support
+from sklearn.metrics import precision_recall_fscore_support, f1_score
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, TensorDataset
 from model import MultiPairDirectionalClassifier
@@ -79,16 +79,16 @@ class Trainer:
         for cls in sorted(counter):
             logging.info(f"Класс {cls} — {counter[cls]} примеров ({counter[cls]/total:.2%})")
 
-        weights = compute_class_weight(
+        self.class_weights = compute_class_weight(
             class_weight='balanced',
             classes=np.unique(flat_y),
             y=flat_y
         )
 
         # Логарифмическое сглаживание
-        weights = np.log1p(weights) * 2
+        self.class_weights = np.log1p(self.class_weights) * 2
 
-        logging.info(f"Веса классов: {weights}")
+        logging.info(f"Веса классов: {self.class_weights}")
 
         X = self.engineer.to_sequences(df_feat, CFG.train.window_size)
         min_len = min(len(X), len(Y))
@@ -123,8 +123,60 @@ class Trainer:
         self.model = MultiPairDirectionalClassifier(model_config=model_config, num_pairs=len(self.tp_sl_pairs)).to(self.device)
         self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=CFG.train.lr)
         self.scheduler = ReduceLROnPlateau(self.optimizer, **CFG.train.scheduler)
-        self.criterion = FocalLoss(alpha=torch.tensor(weights, dtype=torch.float32).to(self.device), gamma=1.5)
+        #варьируем гаммой
         self.calibration_temperature = 1.0
+
+        self.gamma = CFG.train.gamma_values[0]
+        if CFG.train.auto_gamma_search:
+            self.gamma = self.auto_gamma_search()
+            logging.info(f"🔍 Выбрана наилучшая gamma = {self.gamma}")
+        self.criterion = FocalLoss(alpha=torch.tensor(self.class_weights, dtype=torch.float32).to(self.device), gamma=self.gamma)
+
+    def auto_gamma_search(self):
+        best_gamma = None
+        best_profit_f1 = -np.inf
+
+        for gamma in CFG.train.gamma_values:
+            logging.info(f"🔍 Тестируем gamma = {gamma}")
+            model = MultiPairDirectionalClassifier(
+                model_config=self.model.model_config, num_pairs=len(self.tp_sl_pairs)
+            ).to(self.device)
+            optimizer = torch.optim.AdamW(model.parameters(), lr=CFG.train.lr)
+            criterion = FocalLoss(alpha=torch.tensor(self.class_weights, dtype=torch.float32).to(self.device), gamma=gamma)
+
+            # Обучаем несколько эпох (например, 5)
+            for epoch in range(CFG.train.gamma_search_epochs):
+                model.train()
+                for X_batch, y_batch in self.train_loader:
+                    X_batch, y_batch = X_batch.to(self.device), y_batch.to(self.device)
+                    optimizer.zero_grad()
+                    logits = model(X_batch)
+                    loss = criterion(logits.view(-1, 3), y_batch.view(-1))
+                    loss.backward()
+                    optimizer.step()
+
+            # Валидируем
+            model.eval()
+            val_preds, val_targets = [], []
+            with torch.no_grad():
+                for X_batch, y_batch in self.val_loader:
+                    X_batch, y_batch = X_batch.to(self.device), y_batch.to(self.device)
+                    logits = model(X_batch)
+                    preds = torch.argmax(logits, dim=2).cpu().numpy()
+                    val_preds.append(preds)
+                    val_targets.append(y_batch.cpu().numpy())
+            y_pred = np.concatenate(val_preds).ravel()
+            y_true = np.concatenate(val_targets).ravel()
+            profit_true = np.isin(y_true, [0, 2]).astype(int)
+            profit_pred = np.isin(y_pred, [0, 2]).astype(int)
+            profit_f1 = f1_score(profit_true, profit_pred)
+
+            logging.info(f"📊 Gamma {gamma}: Profit F1 = {profit_f1:.4f}")
+            if profit_f1 > best_profit_f1:
+                best_profit_f1 = profit_f1
+                best_gamma = gamma
+
+        return best_gamma
 
     def train(self):
         best_score = -np.inf
@@ -183,7 +235,8 @@ class Trainer:
                     activation=self.model.model_config.activation,
                     layer_norm_eps=self.model.model_config.layer_norm_eps,
                     feature_importances=self.model.feature_importances(),
-                    temperature=self.calibration_temperature
+                    temperature=self.calibration_temperature,
+                    gamma=self.gamma
                 )
                 save_meta(meta_args)
             else:

@@ -20,7 +20,10 @@ class TrainConfig:
     patience = 40
     val_ratio = 0.2
     window_size = 100     # сколько баров в одном обучающем примере
-    lookahead = 16       # горизонт TP/SL в барах
+    lookahead = 16   # горизонт TP/SL в барах
+    auto_gamma_search = True
+    gamma_values = [0.5, 0.75, 1.0, 1.25, 1.5]
+    gamma_search_epochs = 5
 
     # Дополнительные параметры:
     threshold = 0.5  # порог вероятности для генерации сигнала

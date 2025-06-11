@@ -49,7 +49,7 @@ class InferenceEngine:
 
     def predict(self, df: pd.DataFrame):
         df = df[['open_time', 'open', 'high', 'low', 'close', 'volume']].copy()
-        df_feat = self.engineer.generate_features(df, fit=False)
+        df_feat = self.engineer.generate_features(df, fit=False, use_logging=False)
         df_feat = df_feat[self.feature_columns]
         X = self.engineer.to_sequences(df_feat, window_size=self.window_size)
 
@@ -68,11 +68,6 @@ class InferenceEngine:
 
         final_class = preds[-1]
         final_conf = confs[-1]
-
-        # Возвращаем всё: классы, вероятности, флаг трейда
-        all_preds = preds.tolist()
-        all_confs = confs.tolist()
-        all_probs = probs.tolist()
 
         return {
             "final_class": int(final_class),

@@ -6,7 +6,7 @@ from inference_engine import InferenceEngine
 
 
 class Predictor:
-    def __init__(self, model_folder: str):
+    def __init__(self, model_folder: str, use_logging:bool):
         self.model_folder = model_folder
 
         # Загрузка мета-информации модели

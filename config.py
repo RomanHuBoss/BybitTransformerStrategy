@@ -6,14 +6,14 @@ import pandas as pd
 
 
 class Paths:
-    raw_data_path = "historical_data/BTCUSDT/15m/monthly/combined_csv.csv"
+    raw_data_path = "historical_data/BTCUSDT/30m/monthly/combined_csv.csv"
     model_path = "artifacts/model.pth"
     meta_path = "artifacts/model_meta.json"
 
 
 class TrainConfig:
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    timeframe = 15  # таймфрейм в минутах
+    timeframe = 30  # таймфрейм в минутах
     lr = 1e-5
     batch_size = 256
     epochs = 300
@@ -22,8 +22,8 @@ class TrainConfig:
     window_size = 60     # сколько баров в одном обучающем примере
     lookahead = 16   # горизонт TP/SL в барах
     auto_gamma_search = True
-    gamma_values = [0.75, 1.0, 1.25, 1.5]
-    gamma_search_epochs = 5
+    gamma_values = [0.7, 0.75, 1.0]
+    gamma_search_epochs = 7
 
     # Дополнительные параметры:
     threshold = 0.75  # порог вероятности для генерации сигнала
@@ -51,7 +51,7 @@ class DefaultModelConfig:
 
 class SL_TP_Config:
     tp_sl_levels = [
-        (0.01, 0.005), (0.015, 0.005), (0.02, 0.005), (0.025, 0.005), (0.03, 0.005), (0.035, 0.005),
+       (0.015, 0.005), (0.02, 0.005), (0.025, 0.005), (0.03, 0.005), (0.035, 0.005),
         (0.02, 0.01), (0.025, 0.01), (0.03, 0.01), (0.035, 0.01), (0.04, 0.01),
         (0.03, 0.015), (0.04, 0.015), (0.045, 0.015), (0.05, 0.015), (0.06, 0.015),
         (0.04, 0.02), (0.05, 0.02), (0.06, 0.02), (0.07, 0.02), (0.08, 0.02)

@@ -40,7 +40,7 @@ async def predict_info(symbol: str, timeframe: int, threshold: float = 0.7, max_
         try:
             raw = get_bybit_candles(symbol, timeframe=timeframe, candles_num=200)
             df = bybit_candles_to_df(raw)
-            dynamic_predictor = Predictor(model_folder="artifacts/model1", use_logging=False)
+            dynamic_predictor = Predictor(model_folder="artifacts/model2", use_logging=False)
 
             result = dynamic_predictor.predict(df)
             CACHE[cache_key] = {

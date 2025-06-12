@@ -16,7 +16,7 @@ import json
 import os
 import logging
 from collections import Counter
-from losses import FocalLoss
+from losses import CostSensitiveFocalLoss
 from temperature_scaling import TemperatureScaling
 from threshold_tuner import ThresholdTuner
 
@@ -76,8 +76,7 @@ class Trainer:
         )
 
         # Логарифмическое сглаживание
-        self.class_weights = np.log1p(self.class_weights) * 2
-
+        self.class_weights = np.power(self.class_weights, 0.65)
         logging.info(f"Веса классов: {self.class_weights}")
 
         X = self.engineer.to_sequences(df_feat, CFG.train.window_size[CFG.train.timeframe])
@@ -118,7 +117,15 @@ class Trainer:
         if CFG.train.auto_gamma_search:
             self.gamma = self.auto_gamma_search()
             logging.info(f"🔍 Выбрана наилучшая gamma = {self.gamma}")
-        self.criterion = FocalLoss(alpha=torch.tensor(self.class_weights, dtype=torch.float32).to(self.device), gamma=self.gamma)
+
+        # Персонализированные gamma (можно будет тюнить)
+        self.gamma_per_class = torch.tensor([1.5, 0.5, 1.5], dtype=torch.float32).to(self.device)
+
+        self.criterion = CostSensitiveFocalLoss(
+            alpha=torch.tensor(self.class_weights, dtype=torch.float32).to(self.device),
+            gamma=self.gamma_per_class,
+            label_smoothing=CFG.train.label_smoothing
+        )
 
     def auto_gamma_search(self):
         best_gamma = None
@@ -241,7 +248,9 @@ class Trainer:
                     temperature=self.calibration_temperature,
                     gamma=self.gamma,
                     thresholds=self.calibration_thresholds,
+                    margins={"0": 0.15, "2": 0.15}
                 )
+
                 save_meta(meta_args)
             else:
                 epochs_no_improve += 1

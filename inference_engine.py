@@ -8,6 +8,8 @@ from model import MultiPairDirectionalClassifier
 import logging
 import os
 from threshold_tuner import ThresholdTuner
+from margin_calibrator import MarginCalibrator
+
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -33,6 +35,9 @@ class InferenceEngine:
         self.temperature = self.meta.get('temperature', 1.0)
         self.thresholds = self.meta.get('thresholds', None)
         self.tuner = ThresholdTuner.from_dict(self.thresholds)
+
+        self.margins = self.meta.get('margins', None)
+        self.margin_calibrator = MarginCalibrator(margins=self.margins)
 
         model_config = CFG.default_model_config
         model_config.input_dim = self.meta['input_dim']
@@ -65,6 +70,10 @@ class InferenceEngine:
             logits = self.model(X_tensor)
             logits = logits[:, -1, :] / self.temperature  # Temperature Scaling
             probs = torch.softmax(logits, dim=1).cpu().numpy()
+
+            # После softmax -> margin calibration
+            if self.margins:
+                probs = self.margin_calibrator.calibrate_probs(np.log(probs + 1e-8))
 
         # ✅ Здесь теперь применяем Threshold Tuner вместо argmax
         preds = self.tuner.apply_thresholds(probs)

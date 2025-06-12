@@ -13,35 +13,36 @@ class Paths:
 
 class TrainConfig:
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    timeframe = 30  # таймфрейм в минутах
+    timeframe = 30
     lr = 1e-5
     batch_size = 256
     epochs = 300
-    patience = 40
+    patience = 30
     val_ratio = 0.2
-    window_size = { # сколько баров в одном обучающем примере
-        15: 70,
-        30: 120
+    window_size = {
+        15: 60,
+        30: 100
     }
-    lookahead = { # горизонт TP/SL в барах
+    lookahead = {
         15: 10,
         30: 8,
     }
     auto_gamma_search = True
-    gamma_values = [0.7, 0.75, 0.8, 0.85]
+    gamma_values = [0.5, 0.7, 0.9, 1.1, 1.3, 1.5, 1.7]
     gamma_search_epochs = 5
 
-    # Дополнительные параметры:
-    threshold = 0.75  # порог вероятности для генерации сигнала
-    calibrate_logits = True  # если True — калибровать вероятности (например, temperature scaling)
-    use_selected_features_only = True  # использовать только важные признаки
-    feature_importance_threshold = "mean"  # "mean", "median" или float
+    threshold = 0.75
+    calibrate_logits = True
+    use_selected_features_only = True
+    feature_importance_threshold = "mean"
+    label_smoothing = 0.05
 
-    scheduler = dict(  # ReduceLROnPlateau
-        mode="max", factor=0.5, patience=5, cooldown=3, min_lr=1e-6
+    scheduler = dict(
+        mode="max", factor=0.5, patience=7, cooldown=3, min_lr=1e-6
     )
 
-    loader = staticmethod(lambda: pd.read_csv(Paths.raw_data_path))  # загрузка CSV
+    loader = staticmethod(lambda: pd.read_csv(Paths.raw_data_path))
+
 
 
 class DefaultModelConfig:

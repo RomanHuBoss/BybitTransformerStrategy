@@ -394,6 +394,49 @@ class FeatureEngineer:
         df['volatility_breakout_up_boost'] = (df['close'] > rolling_high.shift(1)).astype(int).shift(shift)
         df['volatility_breakout_down_boost'] = (df['close'] < rolling_low.shift(1)).astype(int).shift(shift)
 
+        if use_logging: logging.info("V2.2: Генерация swing high/low...")
+        swing_window = self._adjust(5)
+        df['swing_high'] = df['high'].rolling(swing_window, center=True).max()
+        df['swing_low'] = df['low'].rolling(swing_window, center=True).min()
+        df['is_swing_high'] = (df['high'] >= df['swing_high']).astype(int).shift(shift)
+        df['is_swing_low'] = (df['low'] <= df['swing_low']).astype(int).shift(shift)
+
+        if use_logging: logging.info("V2.2: Генерация price squeeze zones...")
+        boll_window = self._adjust(20)
+        boll = ta.volatility.BollingerBands(close=df['close'], window=boll_window, window_dev=2)
+        df['bollinger_width'] = (boll.bollinger_hband() - boll.bollinger_lband()) / df['close']
+        df['price_squeeze'] = (df['bollinger_width'] < df['bollinger_width'].rolling(boll_window).mean() * 0.7).astype(
+            int).shift(shift)
+
+        if use_logging: logging.info("V2.2: Генерация 2-bar/3-bar reversal patterns...")
+        df['two_bar_bullish'] = (
+                (df['close'].shift(2) < df['open'].shift(2)) &
+                (df['close'].shift(1) > df['open'].shift(1)) &
+                (df['close'].shift(1) > df['close'].shift(2))
+        ).astype(int).shift(shift)
+
+        df['two_bar_bearish'] = (
+                (df['close'].shift(2) > df['open'].shift(2)) &
+                (df['close'].shift(1) < df['open'].shift(1)) &
+                (df['close'].shift(1) < df['close'].shift(2))
+        ).astype(int).shift(shift)
+
+        df['three_bar_reversal'] = (
+                (df['high'].shift(2) < df['high'].shift(1)) &
+                (df['high'] > df['high'].shift(1)) &
+                (df['low'].shift(2) > df['low'].shift(1)) &
+                (df['low'] < df['low'].shift(1))
+        ).astype(int).shift(shift)
+
+        if use_logging: logging.info("V2.2: Генерация candle body position...")
+        body = (df['close'] - df['open'])
+        df['body_position'] = ((df['close'] - df['low']) / (df['high'] - df['low'] + 1e-6)).shift(shift)
+
+        if use_logging: logging.info("V2.2: Генерация trend duration...")
+        trend = np.sign(df['close'] - df['open'])
+        df['trend_duration'] = trend.groupby((trend != trend.shift()).cumsum()).cumcount() + 1
+        df['trend_duration'] = df['trend_duration'].shift(shift)
+
         # Финальная очистка и нормализация
         if use_logging: logging.info("Финализация фичей, очистка данных...")
         df = df.replace([np.inf, -np.inf], np.nan).dropna()

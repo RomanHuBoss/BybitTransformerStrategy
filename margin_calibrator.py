@@ -2,10 +2,7 @@ import numpy as np
 
 class MarginCalibrator:
     def __init__(self, margins=None):
-        """
-        margins: dict вида {class: margin_shift}
-        """
-        self.margins = margins or {}
+        self.margins = margins
 
     def apply(self, logits):
         """

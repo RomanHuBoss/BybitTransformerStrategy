@@ -14,7 +14,7 @@ class Paths:
 class TrainConfig:
     device = "cuda" if torch.cuda.is_available() else "cpu"
     timeframe = 30
-    lr = 1e-5
+    lr = 1e-4
     batch_size = 256
     epochs = 300
     patience = 30
@@ -47,7 +47,7 @@ class TrainConfig:
 
 
 class DefaultModelConfig:
-    input_dim = 69  # будет обновлено автоматически, если use_selected_features_only=True
+    input_dim = 92  # будет обновлено автоматически, если use_selected_features_only=True
     hidden_dim = 192
     n_heads = 16
     n_layers = 4
@@ -59,6 +59,7 @@ class DefaultModelConfig:
 
 class SL_TP_Config:
     tp_sl_levels = [
+        (0.01, 0.005), (0.015, 0.005), (0.02, 0.005), (0.025, 0.005), (0.03, 0.005),
         (0.02, 0.01), (0.025, 0.01), (0.03, 0.01), (0.035, 0.01), (0.04, 0.01),
         (0.03, 0.015), (0.04, 0.015), (0.045, 0.015), (0.05, 0.015), (0.06, 0.015),
         (0.04, 0.02), (0.05, 0.02), (0.06, 0.02), (0.07, 0.02), (0.08, 0.02),

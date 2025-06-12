@@ -234,8 +234,9 @@ class Trainer:
 
                 meta_args = SimpleNamespace(
                     input_dim=self.model.model_config.input_dim,
-                    window_size=CFG.train.window_size,
-                    lookahead=CFG.train.lookahead,
+                    timeframe=CFG.train.timeframe,
+                    window_size=CFG.train.window_size[CFG.train.timeframe],
+                    lookahead=CFG.train.lookahead[CFG.train.timeframe],
                     num_pairs=len(self.tp_sl_pairs),
                     feature_columns=self.feature_columns,
                     tp_sl_pairs=self.tp_sl_pairs,

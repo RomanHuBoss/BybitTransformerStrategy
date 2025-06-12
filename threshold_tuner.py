@@ -56,4 +56,7 @@ class ThresholdTuner:
 
     @classmethod
     def from_dict(cls, data):
-        return cls(thresholds=data)
+        if data is None:
+            return cls()
+        data_int = {int(k): v for k, v in data.items()}
+        return cls(thresholds=data_int)

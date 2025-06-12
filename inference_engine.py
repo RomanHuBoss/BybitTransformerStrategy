@@ -29,6 +29,7 @@ class InferenceEngine:
         self.device = CFG.train.device
         self.engineer = FeatureEngineer()
         self.engineer.load_scaler(self.scaler_mean, self.scaler_scale)
+        self.timeframe = self.meta['timeframe']
         self.feature_columns = self.meta['feature_columns']
         self.window_size = self.meta['window_size']
         self.lookahead = self.meta['lookahead']
@@ -37,7 +38,12 @@ class InferenceEngine:
         self.tuner = ThresholdTuner.from_dict(self.thresholds)
 
         self.margins = self.meta.get('margins', None)
+        print("DEBUG LOADED MARGINS", self.margins)  # <-- ВРЕМЕННЫЙ ОТЛАДОЧНЫЙ ВЫВОД
+        if self.margins is not None:
+            self.margins = {int(k): v for k, v in self.margins.items()}
+        print("DEBUG PARSED MARGINS", self.margins)  # <-- ВРЕМЕННЫЙ ОТЛАДОЧНЫЙ ВЫВОД
         self.margin_calibrator = MarginCalibrator(margins=self.margins)
+        self.num_pairs =  self.meta["num_pairs"]
 
         model_config = CFG.default_model_config
         model_config.input_dim = self.meta['input_dim']
@@ -50,7 +56,7 @@ class InferenceEngine:
         model_config.activation = self.meta['activation']
         model_config.layer_norm_eps = self.meta['layer_norm_eps']
 
-        self.model = MultiPairDirectionalClassifier(model_config=model_config, num_pairs=len(self.meta['tp_sl_pairs']))
+        self.model = MultiPairDirectionalClassifier(model_config=model_config, num_pairs=self.num_pairs)
         self.model.load_state_dict(torch.load(model_path, map_location=self.device))
         self.model.to(self.device)
         self.model.eval()
@@ -71,9 +77,11 @@ class InferenceEngine:
             logits = logits[:, -1, :] / self.temperature  # Temperature Scaling
             probs = torch.softmax(logits, dim=1).cpu().numpy()
 
-            # После softmax -> margin calibration
             if self.margins:
+                batch_size = probs.shape[0]
+                probs = probs.reshape(-1, 3)
                 probs = self.margin_calibrator.calibrate_probs(np.log(probs + 1e-8))
+                probs = probs.reshape(batch_size, self.num_pairs, 3)
 
         # ✅ Здесь теперь применяем Threshold Tuner вместо argmax
         preds = self.tuner.apply_thresholds(probs)

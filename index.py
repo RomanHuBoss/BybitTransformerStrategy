@@ -64,12 +64,12 @@ async def predict_info(symbol: str, timeframe: int, threshold: float = 0.7, max_
     if result is None:
         return {"error": "Недостаточно данных для генерации сигнала"}
 
-    for tp_sl, cls, conf, probs in zip(result["tp_sl_pairs"], result["classes"], result["confidences"],
-                                       result["probabilities"]):
+    probs_list = result["probabilities"][0]  # снимаем лишний уровень вложенности
 
-        prob_no_trade = probs[CFG.action2label["no-trade"]]  # вероятность класса no-trade
+    for i, (tp_sl, cls, conf) in enumerate(zip(result["tp_sl_pairs"], result["classes"], result["confidences"])):
+        probs = probs_list[i]  # теперь внутри уже обычный [3]
+        prob_no_trade = probs[CFG.action2label["no-trade"]]
 
-        # Условие: модель уверена (conf >= threshold) и margin достаточно велик
         if prob_no_trade < max_prob_no_trade and conf >= threshold and cls in [CFG.action2label["short"], CFG.action2label["long"]]:
             filtered["tp_sl_pairs"].append(tp_sl)
             filtered["classes"].append(cls)

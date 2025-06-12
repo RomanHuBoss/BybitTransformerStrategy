@@ -73,21 +73,22 @@ class InferenceEngine:
 
         X_tensor = torch.tensor(X, dtype=torch.float32).to(self.device)
         with torch.no_grad():
-            logits = self.model(X_tensor)
-            logits = logits[:, -1, :] / self.temperature  # Temperature Scaling
-            probs = torch.softmax(logits, dim=1).cpu().numpy()
+            logits = self.model(X_tensor)  # [B, num_pairs, 3]
+            logits = logits / self.temperature
+
+            probs = torch.softmax(logits, dim=2).cpu().numpy()  # [B, num_pairs, 3]
 
             if self.margins:
                 batch_size = probs.shape[0]
-                probs = probs.reshape(-1, 3)
-                probs = self.margin_calibrator.calibrate_probs(np.log(probs + 1e-8))
-                probs = probs.reshape(batch_size, self.num_pairs, 3)
+                probs_flat = probs.reshape(-1, 3)
+                probs_flat = self.margin_calibrator.calibrate_probs(np.log(probs_flat + 1e-8))
+                probs = probs_flat.reshape(batch_size, self.num_pairs, 3)
 
-        # ✅ Здесь теперь применяем Threshold Tuner вместо argmax
-        preds = self.tuner.apply_thresholds(probs)
+        # Переходим к плоской размерности для ThresholdTuner
+        probs_flat = probs.reshape(-1, 3)
+        preds = self.tuner.apply_thresholds(probs_flat)
 
-        # Корректный confidence: берем вероятность предсказанного класса
-        confs = np.array([probs[i, cls] for i, cls in enumerate(preds)])
+        confs = np.array([probs_flat[i, cls] for i, cls in enumerate(preds)])
 
         final_class = preds[-1]
         final_conf = confs[-1]
@@ -100,6 +101,7 @@ class InferenceEngine:
             "probabilities": probs.tolist(),
             "tp_sl_pairs": self.meta["tp_sl_pairs"]
         }
+
 
     def predict_logits(self, df: pd.DataFrame):
         df = df[['open_time', 'open', 'high', 'low', 'close', 'volume']].copy()

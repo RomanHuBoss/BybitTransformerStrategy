@@ -1,5 +1,4 @@
 import torch
-import numpy as np
 
 class HardNegativeMiner:
     def __init__(self, model, device, fraction=0.2):
@@ -43,6 +42,7 @@ class HardNegativeMiner:
             X_aug = torch.cat([X_batch.view(-1, *X_batch.shape[2:]), X_hard], dim=0)
             y_aug = torch.cat([y_flat, y_hard], dim=0)
 
-            # возвращаем в исходную форму для батчей
-            new_batch_size = X_aug.shape[0] // y_batch.shape[1]
-            return X_aug.view(new_batch_size, y_batch.shape[1], -1), y_aug.view(new_batch_size, y_batch.shape[1])
+            T = y_batch.shape[1]
+            F = X_batch.shape[2]
+            new_batch_size = X_aug.shape[0] // T
+            return X_aug.view(new_batch_size, T, F), y_aug.view(new_batch_size, T)

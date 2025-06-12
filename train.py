@@ -18,6 +18,7 @@ import logging
 from collections import Counter
 from losses import CostSensitiveFocalLoss
 from temperature_scaling import TemperatureScaling
+from hard_negative_miner import HardNegativeMiner
 from threshold_tuner import ThresholdTuner
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -112,6 +113,7 @@ class Trainer:
         self.model = MultiPairDirectionalClassifier(model_config=model_config, num_pairs=len(self.tp_sl_pairs)).to(self.device)
         self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=CFG.train.lr)
         self.scheduler = ReduceLROnPlateau(self.optimizer, **CFG.train.scheduler)
+        self.hard_miner = HardNegativeMiner(self.model, self.device, fraction=0.2)
 
         self.gamma = CFG.train.gamma_values[0]
         if CFG.train.auto_gamma_search:
@@ -268,9 +270,14 @@ class Trainer:
         running_loss = 0.0
         for X_batch, y_batch in self.train_loader:
             X_batch, y_batch = X_batch.to(self.device), y_batch.to(self.device)
+
+            # применяем hard negative mining к каждому батчу
+            X_mined, y_mined = self.hard_miner.mine(X_batch, y_batch)
+
             self.optimizer.zero_grad()
-            logits = self.model(X_batch)
-            loss = self.criterion(logits.view(-1, 3), y_batch.view(-1))
+            logits = self.model(X_mined)
+            loss = self.criterion(logits.view(-1, 3), y_mined.view(-1))
+
             loss.backward()
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
             if torch.isnan(loss):

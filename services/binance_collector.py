@@ -98,7 +98,7 @@ if __name__ == "__main__":
     PERIOD = "monthly" # daily or monthly
     CURRENCY_PAIR = "BTCUSDT"
     TIMEFRAME = "15m"
-    START_YEAR = 2020
+    START_YEAR = 2017
     START_MONTH = 1
     START_DAY = 1
     OUTPUT_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "historical_data")

@@ -137,7 +137,12 @@ class Trainer:
                 model_config=self.model.model_config, num_pairs=len(self.tp_sl_pairs)
             ).to(self.device)
             optimizer = torch.optim.AdamW(model.parameters(), lr=CFG.train.lr)
-            criterion = FocalLoss(alpha=torch.tensor(self.class_weights, dtype=torch.float32).to(self.device), gamma=gamma)
+
+            criterion = CostSensitiveFocalLoss(
+                alpha=torch.tensor(self.class_weights, dtype=torch.float32).to(self.device),
+                gamma=torch.tensor([gamma, gamma, gamma], dtype=torch.float32).to(self.device),
+                label_smoothing=CFG.train.label_smoothing
+            )
 
             # Обучаем несколько эпох (например, 5)
             for epoch in range(CFG.train.gamma_search_epochs):

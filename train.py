@@ -5,7 +5,7 @@ from sklearn.metrics import precision_recall_fscore_support, f1_score
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, TensorDataset
 from model import MultiPairDirectionalClassifier
-from feature_engineering import FeatureEngineer
+from feature_engineering_v2_1_full import FeatureEngineer
 from config import CFG
 from label_generator import DirectionalLabelGenerator
 from sklearn.model_selection import train_test_split
@@ -17,6 +17,8 @@ import os
 import logging
 from collections import Counter
 from losses import FocalLoss
+from temperature_scaling import TemperatureScaling
+from threshold_tuner import ThresholdTuner
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -31,23 +33,11 @@ def save_meta(cfg):
     with open(CFG.paths.meta_path, "w") as f:
         json.dump(meta_dict, f, indent=4)
 
-def temperature_scaling(logits, labels):
-    import torch.nn.functional as F
-    T = torch.ones(1, requires_grad=True, device=logits.device)
-    optimizer = torch.optim.LBFGS([T], lr=0.01, max_iter=50)
-
-    def loss_fn():
-        optimizer.zero_grad()
-        loss = F.cross_entropy(logits / T, labels)
-        loss.backward()
-        return loss
-
-    optimizer.step(loss_fn)
-    return T.item()
-
 class Trainer:
     def __init__(self):
         self.device = CFG.train.device
+        self.calibration_temperature = None
+        self.calibration_thresholds = None
 
         logging.info("Загрузка данных из CSV...")
         df = CFG.train.loader()
@@ -65,7 +55,7 @@ class Trainer:
         logging.info("Генерация меток SL/TP...")
         labeler = DirectionalLabelGenerator(
             tp_sl_levels=CFG.tp_sl.tp_sl_levels,
-            lookahead=CFG.train.lookahead
+            lookahead=CFG.train.lookahead[CFG.train.timeframe]
         )
         Y = labeler.generate_labels(ohlcv_data.loc[df_feat.index])
         self.tp_sl_pairs = labeler.tp_sl_levels
@@ -90,7 +80,7 @@ class Trainer:
 
         logging.info(f"Веса классов: {self.class_weights}")
 
-        X = self.engineer.to_sequences(df_feat, CFG.train.window_size)
+        X = self.engineer.to_sequences(df_feat, CFG.train.window_size[CFG.train.timeframe])
         min_len = min(len(X), len(Y))
         X, Y = X[:min_len], Y[:min_len]
         X_train, X_val, y_train, y_val = train_test_split(X, Y, test_size=CFG.train.val_ratio, shuffle=False)
@@ -123,8 +113,6 @@ class Trainer:
         self.model = MultiPairDirectionalClassifier(model_config=model_config, num_pairs=len(self.tp_sl_pairs)).to(self.device)
         self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=CFG.train.lr)
         self.scheduler = ReduceLROnPlateau(self.optimizer, **CFG.train.scheduler)
-        #варьируем гаммой
-        self.calibration_temperature = 1.0
 
         self.gamma = CFG.train.gamma_values[0]
         if CFG.train.auto_gamma_search:
@@ -212,8 +200,23 @@ class Trainer:
                             targets_list.append(targets)
                     logits_all = torch.cat(logits_list, dim=0)
                     targets_all = torch.cat(targets_list, dim=0)
-                    self.calibration_temperature = temperature_scaling(logits_all, targets_all)
-                    logging.info(f"📏 Найдена температура для калибровки логитов: T = {self.calibration_temperature:.4f}")
+
+                    # Temperature Scaling
+                    ts_model = TemperatureScaling(init_temp=1.0, min_temp=0.5, max_temp=5.0, reg_lambda=0.01)
+                    ts_model.fit(logits_all, targets_all)
+                    self.calibration_temperature = ts_model.get_temperature()
+                    logging.info(
+                        f"📏 Найдена температура для калибровки логитов: T = {self.calibration_temperature:.4f}")
+
+                    # Threshold Tuning
+                    logits_calibrated = logits_all / self.calibration_temperature
+                    probs_val = torch.softmax(logits_calibrated, dim=1).cpu().numpy()
+                    targets_val = targets_all.cpu().numpy()
+
+                    tuner = ThresholdTuner()
+                    thresholds = tuner.search_optimal_thresholds(probs_val, targets_val)
+                    self.calibration_thresholds = thresholds
+                    logging.info(f"📐 Найдены оптимальные пороги: {thresholds}")
 
                 meta_args = SimpleNamespace(
                     input_dim=self.model.model_config.input_dim,
@@ -236,7 +239,8 @@ class Trainer:
                     layer_norm_eps=self.model.model_config.layer_norm_eps,
                     feature_importances=self.model.feature_importances(),
                     temperature=self.calibration_temperature,
-                    gamma=self.gamma
+                    gamma=self.gamma,
+                    thresholds=self.calibration_thresholds,
                 )
                 save_meta(meta_args)
             else:

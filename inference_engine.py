@@ -3,10 +3,11 @@ import numpy as np
 import pandas as pd
 import json
 from config import CFG
-from feature_engineering import FeatureEngineer
+from feature_engineering_v2_1_full import FeatureEngineer
 from model import MultiPairDirectionalClassifier
 import logging
 import os
+from threshold_tuner import ThresholdTuner
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -30,6 +31,8 @@ class InferenceEngine:
         self.window_size = self.meta['window_size']
         self.lookahead = self.meta['lookahead']
         self.temperature = self.meta.get('temperature', 1.0)
+        self.thresholds = self.meta.get('thresholds', None)
+        self.tuner = ThresholdTuner.from_dict(self.thresholds)
 
         model_config = CFG.default_model_config
         model_config.input_dim = self.meta['input_dim']
@@ -60,11 +63,14 @@ class InferenceEngine:
         X_tensor = torch.tensor(X, dtype=torch.float32).to(self.device)
         with torch.no_grad():
             logits = self.model(X_tensor)
-            logits = logits[:, -1, :] / self.temperature  # Калибровка логитов
+            logits = logits[:, -1, :] / self.temperature  # Temperature Scaling
             probs = torch.softmax(logits, dim=1).cpu().numpy()
 
-        preds = np.argmax(probs, axis=1)
-        confs = np.max(probs, axis=1)
+        # ✅ Здесь теперь применяем Threshold Tuner вместо argmax
+        preds = self.tuner.apply_thresholds(probs)
+
+        # Корректный confidence: берем вероятность предсказанного класса
+        confs = np.array([probs[i, cls] for i, cls in enumerate(preds)])
 
         final_class = preds[-1]
         final_conf = confs[-1]

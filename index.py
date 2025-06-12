@@ -14,7 +14,6 @@ from services.get_bybit_candles import get_bybit_candles
 from services.bybit_candles_handlers import  bybit_candles_to_df
 from services.bybit_symbols_list import BybitSymbolsList
 from predictor import Predictor
-from collections import Counter
 from config import CFG
 
 app = FastAPI()

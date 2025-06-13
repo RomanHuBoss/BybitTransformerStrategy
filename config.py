@@ -1,76 +1,53 @@
-import numpy as np
-import math
-import torch
-from types import SimpleNamespace
-import pandas as pd
+from pathlib import Path
 
+class CFG:
 
-class Paths:
-    raw_data_path = "historical_data/BTCUSDT/30m/monthly/combined_csv.csv"
-    model_path = "artifacts/model.pth"
-    meta_path = "artifacts/model_meta.json"
+    # Пути к данным и моделям
+    class paths:
+        base = Path("./")
+        train_csv = base / "data" / "train_data.csv"
+        scaler_path = base / "artifacts" / "direction_scaler.joblib"
+        amplitude_scaler_path = base / "artifacts" / "amplitude_scaler.joblib"
+        amplitude_target_scaler_path = base / "artifacts" / "amplitude_target_scaler.joblib"
+        direction_model_path = base / "artifacts" / "direction_model.pth"
+        amplitude_model_path = base / "artifacts" / "amplitude_model.pth"
+        temperature_path = base / "artifacts" / "temperature.joblib"
+        thresholds_path = base / "artifacts" / "thresholds.joblib"
 
+    # Параметры обучения (общие для direction и amplitude)
+    class train:
+        lr = 3e-4
+        batch_size = 512
+        epochs = 10
+        val_size = 0.1
+        focal_gamma = 2.0
 
-class TrainConfig:
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    timeframe = 30
-    lr = 1e-4
-    batch_size = 256
-    epochs = 300
-    patience = 30
-    val_ratio = 0.2
-    window_size = {
-        15: 60,
-        30: 100
-    }
-    lookahead = {
-        15: 10,
-        30: 8,
-    }
-    auto_gamma_search = True
-    gamma_values = [0.75, 0.8, 0.85, 0.9, 1]
-    #gamma_values = [0.9]
-    gamma_search_epochs = 5
+    # Параметры инференса
+    class inference:
+        update_interval = 120  # секунд между обновлениями snapshot
+        api_port = 8000
 
-    threshold = 0.75
-    calibrate_logits = True
-    use_selected_features_only = True
-    feature_importance_threshold = "mean"
-    label_smoothing = 0.05
+    # Параметры актива и данных
+    class assets:
+        symbols = ["BTCUSDT", "ETHUSDT", "XRPUSDT", "SOLUSDT"]
+        timeframe = "30"
+        limit = 500
 
-    scheduler = dict(
-        mode="max", factor=0.5, patience=7, cooldown=3, min_lr=1e-6
-    )
+    # Параметры hybrid логики
+    class hybrid:
+        min_amplitude = 0.002  # минимальный предсказанный amplitude для фильтрации
 
-    loader = staticmethod(lambda: pd.read_csv(Paths.raw_data_path))
+    # Параметры label генерации
+    class labels:
+        tp_multiplier = 1.0
+        sl_multiplier = 1.0
+        slippage = 0.0005
 
+    # Режимы генерации признаков
+    class feature_engineering:
+        default_shift = 1  # смещение меток
 
+    # Параметры сохранения генератора
+    class snapshot:
+        history_depth = 100  # глубина хранения snapshot для бэктестинга
 
-class DefaultModelConfig:
-    input_dim = 92  # будет обновлено автоматически, если use_selected_features_only=True
-    hidden_dim = 192
-    n_heads = 16
-    n_layers = 4
-    dropout = 0.3
-    n_classes = 3
-    dim_feedforward = 768
-    activation = 'gelu'
-    layer_norm_eps = 1e-5
-
-class SL_TP_Config:
-    tp_sl_levels = [
-        (0.01, 0.005), (0.015, 0.005), (0.02, 0.005), (0.025, 0.005), (0.03, 0.005),
-        (0.02, 0.01), (0.025, 0.01), (0.03, 0.01), (0.035, 0.01), (0.04, 0.01),
-        (0.03, 0.015), (0.04, 0.015), (0.045, 0.015), (0.05, 0.015), (0.06, 0.015),
-        (0.04, 0.02), (0.05, 0.02), (0.06, 0.02), (0.07, 0.02), (0.08, 0.02),
-        (0.06, 0.03), (0.075, 0.03), (0.09, 0.03), (0.105, 0.03), (0.120, 0.03)
-    ]
-
-CFG = SimpleNamespace(
-    paths=Paths(),
-    train=TrainConfig(),
-    tp_sl=SL_TP_Config(),
-    default_model_config=DefaultModelConfig(),
-    label2action={0: "short", 1: "no-trade", 2: "long"},
-    action2label={"short": 0, "no-trade": 1, "long": 2},
-)

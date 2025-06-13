@@ -3,10 +3,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class CostSensitiveFocalLoss(nn.Module):
-    def __init__(self, alpha=None, gamma=None, label_smoothing=0.0):
+    def __init__(self, alpha=None, gamma=2.0, label_smoothing=0.0):
         """
-        alpha — веса классов (тензор размерности [num_classes])
-        gamma — фокусирующий параметр (либо скаляр, либо тензор размерности [num_classes])
+        Cost-Sensitive Focal Loss with class weights and optional per-class gamma.
+
+        :param alpha: Tensor of class weights (shape [num_classes])
+        :param gamma: Scalar or tensor per-class focusing parameter
+        :param label_smoothing: Label smoothing factor (default=0.0)
         """
         super().__init__()
         self.alpha = alpha
@@ -19,7 +22,7 @@ class CostSensitiveFocalLoss(nn.Module):
         )
         ce_loss = torch.nan_to_num(ce_loss, nan=0.0, posinf=1e6, neginf=-1e6)
 
-        pt = torch.exp(-ce_loss)
+        pt = torch.exp(-ce_loss).clamp(min=1e-8, max=1.0)
         if isinstance(self.gamma, torch.Tensor):
             gamma_factor = self.gamma[targets]
         else:

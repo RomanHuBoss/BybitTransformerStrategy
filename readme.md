@@ -15,7 +15,7 @@
 ### 1. Модель и обучение
 
 - Используется кастомный `Transformer Encoder` ([model.py](model.py))
-- Обучение реализовано через `Trainer` ([train.py](train.py)):
+- Обучение реализовано через `Trainer` ([train.py](train_direction.py)):
   - Focal Loss с адаптацией под дисбаланс классов
   - Автоматическая генерация признаков и меток
   - Калибровка логитов с помощью temperature scaling

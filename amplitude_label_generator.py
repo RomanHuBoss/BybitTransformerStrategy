@@ -1,15 +1,15 @@
-# amplitude_label_generator.py
 import numpy as np
 import pandas as pd
 
 class AmplitudeLabelGenerator:
     """
-    Генератор амплитудных таргетов:
+    Генератор амплитудных таргетов для amplitude регрессии.
     """
+
     def __init__(self, lookahead: int):
         self.lookahead = lookahead
 
-    def generate_labels(self, df: pd.DataFrame) -> np.ndarray:
+    def generate_amplitude_labels(self, df: pd.DataFrame) -> np.ndarray:
         close = df["close"].values
         high = df["high"].values
         low = df["low"].values
@@ -19,11 +19,10 @@ class AmplitudeLabelGenerator:
 
         for i in range(N - self.lookahead):
             entry_price = close[i]
-            future_high = np.max(high[i+1:i+1+self.lookahead])
-            future_low = np.min(low[i+1:i+1+self.lookahead])
+            high_future = high[i+1 : i+1+self.lookahead]
+            low_future = low[i+1 : i+1+self.lookahead]
 
-            amplitude = max(abs(future_high - entry_price), abs(future_low - entry_price))
-            amplitude_pct = amplitude / entry_price
-            amplitudes[i] = amplitude_pct
+            max_future_move = max(np.max(high_future) - entry_price, entry_price - np.min(low_future))
+            amplitudes[i] = max_future_move / entry_price
 
         return amplitudes

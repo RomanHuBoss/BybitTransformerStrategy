@@ -1,76 +1,72 @@
-import os
-import json
 import numpy as np
-import pandas as pd
+import torch
+import joblib
 
-from predictor import Predictor
-from amplitude_predictor import AmplitudePredictor
+from feature_engineering import FeatureEngineer
+from model import DirectionalModel, AmplitudeModel
+from config import CFG
 
-class AdaptiveHybridPredictor:
-    def __init__(self, direction_model_folder: str, amplitude_model_folder: str,
-                 confidence_threshold=0.3, amplitude_threshold_atr=1.2):
-        self.direction_predictor = Predictor(direction_model_folder, use_logging=False)
-        self.amplitude_predictor = AmplitudePredictor(amplitude_model_folder)
 
-        self.confidence_threshold = confidence_threshold
-        self.amplitude_threshold_atr = amplitude_threshold_atr  # минимальная амплитуда в ATR
+class HybridPredictor:
+    def __init__(self):
+        self.feature_engineer = FeatureEngineer()
+        self.feature_engineer.scaler = joblib.load(CFG.paths.scaler_path)
 
-    def predict(self, df: pd.DataFrame, tp_coef=0.7, sl_coef=0.3):
-        direction_result = self.direction_predictor.predict(df)
-        amplitude_result = self.amplitude_predictor.predict_amplitude(df)
+        self.direction_model = DirectionalModel(input_size=len(self.feature_engineer.feature_columns))
+        self.direction_model.load_state_dict(torch.load(CFG.paths.direction_model_path))
+        self.direction_model.eval()
 
-        final_class = direction_result['final_class']
-        confidence = direction_result['final_confidence']
-        entry_price = df.iloc[-1]['close']
+        self.amplitude_model = AmplitudeModel(input_size=len(self.feature_engineer.feature_columns))
+        self.amplitude_model.load_state_dict(torch.load(CFG.paths.amplitude_model_path))
+        self.amplitude_model.eval()
 
-        predicted_amplitude = amplitude_result["predicted_amplitude"]
-        norm_amplitude = amplitude_result["predicted_norm"]
-        atr_now = amplitude_result["atr"]
+        self.temperature = joblib.load(CFG.paths.temperature_path)
+        self.thresholds = joblib.load(CFG.paths.thresholds_path)
+        self.amplitude_scaler = joblib.load(CFG.paths.amplitude_target_scaler_path)
 
-        # Продвинутая логика принятия решения
+    def predict(self, df):
+        # Генерация признаков
+        features = self.feature_engineer.generate_features(df, fit=False)
 
-        signal_type = "none"
+        # Берём последний сэмпл
+        X_input = features.iloc[-1:].values.astype(np.float32)
+        X_tensor = torch.tensor(X_input)
 
-        # Если модель уверена в направлении (short/long), то принимаем решение сразу
-        if final_class in [0, 2] and confidence >= self.confidence_threshold:
-            signal_type = "directional"
+        # Directional prediction
+        with torch.no_grad():
+            logits = self.direction_model(X_tensor).numpy() / self.temperature
+            probs = self.softmax(logits)
 
-        # Если модель дала no-trade, но уверенность не слишком высокая — допускаем слабые directional сигналы
-        elif final_class == 1 and confidence < 0.99:
-            signal_type = "directional"
-            # Можно ввести элемент случайности, например:
-            final_class = 0 if np.random.rand() < 0.5 else 2
+        final_class = np.argmax(probs)
+        confidence = probs[0, final_class]
 
-        # Если амплитуда достаточно большая — подключаем amplitude-only fallback
-        elif norm_amplitude >= self.amplitude_threshold_atr:
-            signal_type = "amplitude_only"
-            final_class = 0 if np.random.rand() < 0.5 else 2
+        # Amplitude prediction
+        with torch.no_grad():
+            amp_pred_norm = self.amplitude_model(X_tensor).numpy()[0, 0]
+            amp_pred = self.amplitude_scaler.inverse_transform([[amp_pred_norm]])[0, 0]
 
-        result = {
-            "signal_type": str(signal_type),
-            "direction": int(final_class),
-            "confidence": float(confidence),
-            "amplitude": float(predicted_amplitude),
-            "atr": float(atr_now),
-            "norm_amplitude": float(norm_amplitude),
-            "entry_price": float(entry_price),
-            "tp": None,
-            "sl": None
+        # Adaptive hybrid decision
+        hybrid_class = self._apply_thresholds(probs[0], amp_pred)
+
+        return {
+            "final_class": int(hybrid_class),
+            "final_confidence": float(confidence),
+            "predicted_norm": float(amp_pred_norm),
+            "predicted_amplitude": float(amp_pred)
         }
 
-        if signal_type != "none":
-            if final_class == 0:
-                tp = entry_price - predicted_amplitude * tp_coef
-                sl = entry_price + predicted_amplitude * sl_coef
-            elif final_class == 2:
-                tp = entry_price + predicted_amplitude * tp_coef
-                sl = entry_price - predicted_amplitude * sl_coef
+    def _apply_thresholds(self, probs, amplitude):
+        prob_0, prob_1, prob_2 = probs
 
-            result['tp'] = float(tp)
-            result['sl'] = float(sl)
+        if prob_0 > self.thresholds[0] and amplitude > CFG.hybrid.min_amplitude:
+            return 0  # Short
 
-        # Финальный sanity check — не отдавать сигналы с tiny амплитудой
-        if predicted_amplitude < 0.001:  # например 0.1%
-            result['signal_type'] = "none"
+        if prob_2 > self.thresholds[2] and amplitude > CFG.hybrid.min_amplitude:
+            return 2  # Long
 
-        return result
+        return 1  # No trade
+
+    @staticmethod
+    def softmax(x):
+        e_x = np.exp(x - np.max(x, axis=1, keepdims=True))
+        return e_x / e_x.sum(axis=1, keepdims=True)

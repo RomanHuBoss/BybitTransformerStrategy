@@ -1,61 +1,46 @@
-import time
-import threading
-from services.get_bybit_candles import get_bybit_candles
-from services.bybit_candles_handlers import bybit_candles_to_df, filter_closed_bars
-from hybrid_predictor import AdaptiveHybridPredictor
+import asyncio
+import logging
+from datetime import datetime
 
-class SnapshotInferenceEngine:
-    def __init__(self, symbols, timeframe, update_interval=1800):
-        self.symbols = symbols
-        self.timeframe = timeframe
-        self.update_interval = update_interval  # 30 минут
-        self.cache = {}  # symbol -> {timestamp, result}
+from hybrid_predictor import HybridPredictor
+from get_bybit_candles import get_candles_batch
+from config import CFG
 
-        self.hybrid_predictor = AdaptiveHybridPredictor(
-            direction_model_folder="artifacts/direction_model_30m",
-            amplitude_model_folder="artifacts/amplitude_model_30m"
-        )
 
-        self.start_initial_load()
+class SnapshotInference:
+    def __init__(self):
+        self.predictor = HybridPredictor()
+        self.snapshot = {}
 
-    def start_initial_load(self):
-        def load():
-            self.update_all()
-            self.start_auto_update()
-        t = threading.Thread(target=load, daemon=True)
-        t.start()
+    async def update_snapshot(self):
+        tasks = []
+        for symbol in CFG.assets.symbols:
+            tasks.append(self.process_symbol(symbol))
 
-    def update_symbol(self, symbol):
+        await asyncio.gather(*tasks)
+
+        self.snapshot["timestamp"] = datetime.utcnow().isoformat()
+        logging.info(f"Снимок обновлён. Активов: {len(self.snapshot) - 1}")
+
+    async def process_symbol(self, symbol):
         try:
-            raw = get_bybit_candles(symbol, timeframe=self.timeframe, candles_num=1000)
-            df = bybit_candles_to_df(raw)
-            df = filter_closed_bars(df, timeframe_minutes=self.timeframe)
-
-            if len(df) < 100:
-                print(f"Not enough data for {symbol}, skipping.")
-                return
-
-            result = self.hybrid_predictor.predict(df)
-            self.cache[symbol] = {
-                "timestamp": int(time.time()),
-                "result": result
-            }
-            print(f"Updated {symbol}: {result['signal_type']}")
-
+            df = await get_candles_batch(symbol, CFG.assets.timeframe, limit=CFG.assets.limit)
+            result = self.predictor.predict(df)
+            self.snapshot[symbol] = result
         except Exception as e:
-            print(f"Error updating {symbol}: {e}")
+            logging.warning(f"Ошибка при обработке {symbol}: {e}")
 
-    def update_all(self):
-        for symbol in self.symbols:
-            self.update_symbol(symbol)
+    def get_snapshot(self):
+        return self.snapshot
 
-    def start_auto_update(self):
-        def update_loop():
-            while True:
-                self.update_all()
-                time.sleep(self.update_interval)
-        t = threading.Thread(target=update_loop, daemon=True)
-        t.start()
 
-    def get(self, symbol):
-        return self.cache.get(symbol)
+if __name__ == '__main__':
+    import asyncio
+
+    logging.basicConfig(level=logging.INFO)
+    engine = SnapshotInference()
+
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(engine.update_snapshot())
+
+    print(engine.get_snapshot())

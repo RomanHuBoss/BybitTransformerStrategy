@@ -1,155 +1,85 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
-    <meta charset="UTF-8"/>
-    <title>Гибридные торговые сигналы (Clean AutoUpdate)</title>
+    <meta charset="UTF-8">
+    <title>Quant ML Hybrid Signals (V4.0)</title>
     <style>
         body {
-            font-family: "Roboto", sans-serif;
-            background-color: #f4f4f9;
+            font-family: Arial, sans-serif;
+            background: #121212;
+            color: #eee;
             margin: 0;
-            padding: 0;
+            padding: 20px;
         }
         .grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-            gap: 0.75rem;
-            padding: 1rem 2rem;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 15px;
         }
         .tile {
-            background-color: #e0e0e0;
-            padding: 0.6rem;
-            border-radius: 6px;
+            border-radius: 12px;
+            padding: 20px;
             text-align: center;
-            font-weight: 700;
-            font-size: 0.9rem;
-            transition: background-color 0.3s ease, transform 0.2s;
+            font-size: 18px;
             cursor: pointer;
-            height: 70px;
-            word-break: break-word;
-            display: flex;
-            flex-direction: column;  /* Теперь строки идут сверху вниз */
-            align-items: center;
-            justify-content: center;
+            transition: 0.3s;
+            box-shadow: 0 0 10px rgba(0,0,0,0.4);
         }
-        .tile:hover { transform: translateY(-2px); }
-        .tile.red { background-color: #ef9a9a; color: #b71c1c; }
-        .tile.green { background-color: #a5d6a7; color: #1b5e20; }
-        .tile.gray { background-color: #eeeeee; color: #424242; }
-        h1 { text-align: center; margin: 1.5rem 0 1rem; }
-        #dialog {
-            position: fixed; inset: 0; background: rgba(0,0,0,0.5);
-            display: none; justify-content: center; align-items: center; z-index: 1000;
+        .long { background: #2ecc71; color: #000; }
+        .short { background: #e74c3c; color: #000; }
+        .neutral { background: #7f8c8d; }
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
         }
-        #dialogBox {
-            background: white; padding: 1.5rem; border-radius: 8px;
-            max-width: 500px; width: 90%; height: 400px;
-            display: flex; flex-direction: column;
-        }
-        #dialogScrollable { overflow-y: auto; flex: 1; margin-top: 1rem; }
     </style>
 </head>
 <body>
-<h1>Гибридные торговые сигналы (AutoUpdate)</h1>
-<div class="grid" id="currencyGrid"></div>
+    <h1 class="header">Quant ML V4.0 Hybrid Signals</h1>
+    <div class="grid" id="grid"></div>
 
-<div id="dialog">
-    <div id="dialogBox">
-        <h2 id="dialogTitle">Торговая рекомендация</h2>
-        <div id="dialogScrollable"></div>
-        <div style="text-align:right; margin-top:1rem;">
-            <button onclick="document.getElementById('dialog').style.display='none'">Закрыть</button>
-        </div>
-    </div>
-</div>
-
-<script>
-document.addEventListener('DOMContentLoaded', async () => {
-    const grid = document.getElementById('currencyGrid');
-    const TIMEFRAME = 30;
-
-    const response = await fetch('/get_currency_pairs');
-    const data = await response.json();
-
-    for (let pair of data) {
-        const tile = document.createElement('div');
-        tile.className = 'tile gray';
-        tile.textContent = pair;
-        tile.setAttribute("symbol", pair);
-        grid.appendChild(tile);
-
-        tile.addEventListener('click', async () => {
+    <script>
+        async function loadSnapshot() {
             try {
-                const res = await fetch(`/predict_hybrid?symbol=${pair}&timeframe=${TIMEFRAME}`);
-                const result = await res.json();
-
-                if (!result || result.error) {
-                    alert(`Нет данных для ${pair}`);
-                    return;
-                }
-
-                let direction = "➖ Нет сигнала";
-                if (result.direction === 0) direction = "🔴 Short";
-                if (result.direction === 2) direction = "🟢 Long";
-
-                const content = `
-                    <table style="width: 100%;">
-                        <tr><td>Сигнал:</td><td>${direction}</td></tr>
-                        <tr><td>Уверенность:</td><td>${(result.confidence * 100).toFixed(1)}%</td></tr>
-                        <tr><td>Амплитуда:</td><td>${(result.amplitude * 100).toFixed(2)}%</td></tr>
-                        <tr><td>TP:</td><td>${(result.tp * 100 / result.entry_price).toFixed(2)}%</td></tr>
-                        <tr><td>SL:</td><td>${(result.sl * 100 / result.entry_price).toFixed(2)}%</td></tr>
-                    </table>
-                    <hr>
-                    <a href="https://www.bybit.com/trade/usdt/${pair}" target="_blank">Перейти на биржу</a>
-                    `;
-
-                document.getElementById("dialogTitle").textContent = pair;
-                document.getElementById("dialogScrollable").innerHTML = content;
-                document.getElementById("dialog").style.display = "flex";
-
-            } catch (err) {
-                alert(`Ошибка при загрузке данных для ${pair}`);
-                console.error(err);
+                const res = await fetch("/snapshot");
+                const data = await res.json();
+                renderTiles(data);
+            } catch (e) {
+                console.error("Ошибка загрузки:", e);
             }
-        });
-
-        function updateTile() {
-            fetch(`/predict_hybrid?symbol=${pair}&timeframe=${TIMEFRAME}`)
-                .then(res => res.json())
-                .then(result => {
-                    tile.classList.remove('gray', 'red', 'green');
-
-                    if (!result || result.error || result.signal_type === undefined || result.signal_type === "none") {
-                        tile.classList.add('gray');
-                        tile.textContent = pair;  // Только название валюты при отсутствии сигнала
-                        return;
-                    }
-
-                    // Цвет плитки по направлению
-                    if (result.direction === 0) {
-                        tile.classList.add('red');
-                    } else if (result.direction === 2) {
-                        tile.classList.add('green');
-                    }
-
-                    // Вычисляем TP/SL дельты
-                    let tpDelta = result.tp ? (((result.tp - result.entry_price) / result.entry_price) * 100).toFixed(1) : "-";
-                    let slDelta = result.sl ? (((result.sl - result.entry_price) / result.entry_price) * 100).toFixed(1) : "-";
-
-                    tile.innerHTML = `${pair}<br><small>${tpDelta}% / ${slDelta}%</small>`;
-                })
-                .catch(err => {
-                    console.error(`Ошибка при обновлении ${pair}:`, err);
-                    tile.classList.add('gray');
-                    tile.textContent = pair;
-                });
         }
 
-        updateTile(); // Первичное обновление при загрузке
-        setInterval(updateTile, 30000); // Автоматическое обновление каждые 30 секунд
-    }
-});
-</script>
+        function renderTiles(snapshot) {
+            const grid = document.getElementById("grid");
+            grid.innerHTML = "";
+
+            for (const symbol in snapshot) {
+                if (symbol === "timestamp") continue;
+
+                const signal = snapshot[symbol];
+                const classMap = { 0: "short", 1: "neutral", 2: "long" };
+                const tile = document.createElement("div");
+                tile.className = `tile ${classMap[signal.final_class]}`;
+
+                const amplitude = (signal.predicted_amplitude * 100).toFixed(2);
+                const confidence = (signal.final_confidence * 100).toFixed(1);
+
+                tile.innerHTML = `
+                    <strong>${symbol}</strong><br>
+                    Amp: ${amplitude}%<br>
+                    Conf: ${confidence}%
+                `;
+
+                tile.onclick = () => {
+                    alert(`${symbol}\n\nClass: ${signal.final_class}\nConfidence: ${confidence}%\nAmplitude: ${amplitude}%`);
+                };
+
+                grid.appendChild(tile);
+            }
+        }
+
+        loadSnapshot();
+        setInterval(loadSnapshot, 60_000); // Обновлять каждые 60 сек
+    </script>
 </body>
 </html>

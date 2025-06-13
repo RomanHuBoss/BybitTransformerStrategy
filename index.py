@@ -1,36 +1,47 @@
-import uvicorn
+import asyncio
+import logging
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse, JSONResponse
-import os
-
-from services.bybit_symbols_list import BybitSymbolsList
-from snapshot_inference import SnapshotInferenceEngine
+from fastapi.middleware.cors import CORSMiddleware
+from snapshot_inference import SnapshotInference
+from config import CFG
 
 app = FastAPI()
 
-symbolsList = BybitSymbolsList()
-symbols = symbolsList.get_bybit_symbols_list(1000)
-snapshot_engine = SnapshotInferenceEngine(symbols, timeframe=30)
+# Разрешаем доступ с фронтенда
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-@app.get("/", response_class=HTMLResponse)
-async def root():
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    html_path = os.path.join(base_dir, "index_hybrid.html")
-    with open(html_path, encoding="utf-8") as f:
-        return f.read()
+# Инициализация snapshot движка
+snapshot_engine = SnapshotInference()
 
-@app.get("/get_currency_pairs")
-async def get_currency_pairs():
-    return symbols
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(snapshot_loop())
 
-@app.get("/predict_hybrid")
-async def predict_hybrid(symbol: str, timeframe: int, tp_coef: float = 0.7, sl_coef: float = 0.3):
-    snapshot = snapshot_engine.get(symbol)
-    if not snapshot:
-        return JSONResponse({"error": "Нет данных для символа"}, status_code=404)
+async def snapshot_loop():
+    while True:
+        try:
+            await snapshot_engine.update_snapshot()
+        except Exception as e:
+            logging.error(f"Ошибка при обновлении snapshot: {e}")
+        await asyncio.sleep(CFG.inference.update_interval)
 
-    return snapshot["result"]
+@app.get("/snapshot")
+async def get_snapshot():
+    return snapshot_engine.get_snapshot()
+
+# Для ручного обновления (опционально)
+@app.get("/force_update")
+async def force_update():
+    await snapshot_engine.update_snapshot()
+    return {"status": "updated"}
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run("index:app", host="0.0.0.0", port=port, reload=True)
+    import uvicorn
+    logging.basicConfig(level=logging.INFO)
+    uvicorn.run(app, host="0.0.0.0", port=CFG.inference.api_port)

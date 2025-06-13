@@ -29,9 +29,9 @@ class DirectionalModel(nn.Module):
     def forward(self, x):
         x = self.input_proj(x)
         x = self.transformer_encoder(x)
-        x = x[:, -1, :]  # последние шаги окна
+        x = x[:, -1, :]
         x = self.output_head(x)
-        return x.view(x.size(0), self.num_pairs, 3)
+        return x.view(x.size(0), 3)
 
 
 # AmplitudeModel — регрессия амплитуды

@@ -1,18 +1,19 @@
 import numpy as np
 import pandas as pd
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
 import joblib
 import logging
 import os
+
 from feature_engineering import FeatureEngineer
 from model import DirectionalModel
 from losses import CostSensitiveFocalLoss
 from directional_label_generator import DirectionalLabelGenerator
+from dataset import SequenceDataset  # теперь из отдельного файла
 from config import CFG
-
 
 # ------------------------------
 # Конфигурация модели
@@ -28,22 +29,6 @@ class ModelConfig:
         self.activation = 'gelu'
         self.dropout = 0.1
         self.layer_norm_eps = 1e-5
-
-
-# ------------------------------
-# PyTorch Dataset
-# ------------------------------
-
-class CryptoDataset(Dataset):
-    def __init__(self, X, y):
-        self.X = torch.tensor(X, dtype=torch.float32)
-        self.y = torch.tensor(y, dtype=torch.long)
-
-    def __len__(self):
-        return len(self.X)
-
-    def __getitem__(self, idx):
-        return self.X[idx], self.y[idx]
 
 
 # ------------------------------
@@ -139,13 +124,14 @@ class MarginCalibrator:
 
 class DirectionalTrainer:
     def __init__(self):
+        self.window_size = CFG.feature_engineering.window_size
+
         self.df = pd.read_csv(CFG.paths.train_csv)
         logging.info(f"Загружено {len(self.df)} строк.")
 
         self.engineer = FeatureEngineer()
         logging.info("Генерация признаков...")
         self.df_feat = self.engineer.generate_features(self.df, fit=True)
-
         os.makedirs(os.path.dirname(CFG.paths.scaler_path), exist_ok=True)
         joblib.dump(self.engineer.scaler, CFG.paths.scaler_path)
 
@@ -155,8 +141,6 @@ class DirectionalTrainer:
             lookahead=CFG.labels.lookahead
         )
         labels = generator.generate_labels(self.df)
-
-        # Агрегируем метки в одну финальную метку per-row
         agg_labels = np.where(
             (labels == CFG.action2label.mapping["long"]).any(axis=1),
             CFG.action2label.mapping["long"],
@@ -166,11 +150,7 @@ class DirectionalTrainer:
                 CFG.action2label.mapping["no-trade"]
             )
         )
-
-        # Превращаем метки в Series с индексом self.df
         labels_series = pd.Series(agg_labels, index=self.df.index)
-
-        # Склеиваем признаки и метки по индексу (чистый способ)
         self.df_feat = self.df_feat.merge(
             labels_series.rename("label"),
             left_index=True,
@@ -180,22 +160,19 @@ class DirectionalTrainer:
 
         self._log_class_balance()
 
+        X = self.df_feat.drop(columns=['label']).values
+        y = self.df_feat['label'].values
+
         self.X_train, self.X_val, self.y_train, self.y_val = train_test_split(
-            self.df_feat.drop(columns=['label']),
-            self.df_feat['label'],
-            test_size=CFG.train.val_size,
-            shuffle=False
+            X, y, test_size=CFG.train.val_size, shuffle=False
         )
 
-        self.train_ds = CryptoDataset(self.X_train.values, self.y_train.values)
-        self.val_ds = CryptoDataset(self.X_val.values, self.y_val.values)
+        self.train_ds = SequenceDataset(self.X_train, self.y_train, self.window_size)
+        self.val_ds = SequenceDataset(self.X_val, self.y_val, self.window_size)
 
         input_dim = self.X_train.shape[1]
         model_cfg = ModelConfig(input_dim=input_dim)
-        self.model = DirectionalModel(
-            model_config=model_cfg,
-            num_pairs=len(CFG.assets.symbols)
-        )
+        self.model = DirectionalModel(model_config=model_cfg, num_pairs=len(CFG.assets.symbols))
 
         self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=CFG.train.lr)
         self.criterion = CostSensitiveFocalLoss(gamma=CFG.train.focal_gamma)
@@ -206,6 +183,7 @@ class DirectionalTrainer:
         for cls, cnt in counts.items():
             pct = cnt / total * 100
             logging.info(f"Класс {cls}: {cnt} примеров ({pct:.2f}%)")
+
 
     def train(self):
         best_profit_f1 = -np.inf
@@ -256,7 +234,6 @@ class DirectionalTrainer:
         probs = self._softmax(logits)
         preds = np.argmax(probs, axis=1)
 
-        # Приводим к строкам чтобы стабилизировать classification_report
         labels_str = list(map(str, labels))
         preds_str = list(map(str, preds))
         cls_report = classification_report(labels_str, preds_str, output_dict=True, zero_division=0)

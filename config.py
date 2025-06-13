@@ -53,6 +53,7 @@ class CFG:
     # Режимы генерации признаков
     class feature_engineering:
         default_shift = 1  # смещение меток
+        window_size = 60  # окно
 
     # Параметры сохранения генератора
     class snapshot:

@@ -1,6 +1,5 @@
 import torch.nn as nn
 
-# Directional MultiPair Transformer Classifier
 class DirectionalModel(nn.Module):
     def __init__(self, model_config, num_pairs):
         super(DirectionalModel, self).__init__()
@@ -27,14 +26,10 @@ class DirectionalModel(nn.Module):
             nn.Linear(model_config.hidden_dim, num_pairs * 3)
         )
 
-    def feature_importances(self):
-        weights = self.input_proj.weight.abs().mean(dim=0)
-        return weights.cpu().detach().numpy()
-
     def forward(self, x):
         x = self.input_proj(x)
         x = self.transformer_encoder(x)
-        x = x[:, -1, :]
+        x = x[:, -1, :]  # последние шаги окна
         x = self.output_head(x)
         return x.view(x.size(0), self.num_pairs, 3)
 

@@ -58,3 +58,9 @@ class CFG:
     class snapshot:
         history_depth = 100  # глубина хранения snapshot для бэктестинга
 
+    class action2label:
+        mapping = {
+            "short": 0,
+            "no-trade": 1,
+            "long": 2
+        }

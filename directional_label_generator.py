@@ -23,7 +23,7 @@ class DirectionalLabelGenerator:
 
         N = len(close)
         num_pairs = len(self.tp_sl_levels)
-        Y = np.full((N, num_pairs), CFG.action2label["no-trade"], dtype=int)
+        Y = np.full((N, num_pairs), CFG.action2label.mapping["no-trade"], dtype=int)
 
         for i in range(N - self.lookahead):
             entry = close[i]
@@ -38,9 +38,9 @@ class DirectionalLabelGenerator:
                 short_hit = self._check_hit(high_future, low_future, tp_short, sl_short, mode="short")
 
                 if long_hit == "tp":
-                    Y[i, j] = CFG.action2label["long"]
+                    Y[i, j] = CFG.action2label.mapping["long"]
                 elif short_hit == "tp":
-                    Y[i, j] = CFG.action2label["short"]
+                    Y[i, j] = CFG.action2label.mapping["short"]
 
         return Y
 

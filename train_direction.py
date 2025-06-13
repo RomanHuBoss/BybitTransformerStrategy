@@ -1,13 +1,12 @@
 import numpy as np
 import pandas as pd
 import torch
-from torch import nn
 from torch.utils.data import Dataset, DataLoader
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
 import joblib
 import logging
-
+import os
 from feature_engineering import FeatureEngineer
 from model import DirectionalModel
 from losses import CostSensitiveFocalLoss
@@ -147,6 +146,7 @@ class DirectionalTrainer:
         logging.info("Генерация признаков...")
         self.df_feat = self.engineer.generate_features(self.df, fit=True)
 
+        os.makedirs(os.path.dirname(CFG.paths.scaler_path), exist_ok=True)
         joblib.dump(self.engineer.scaler, CFG.paths.scaler_path)
 
         logging.info("Генерация меток SL/TP...")
@@ -241,9 +241,13 @@ class DirectionalTrainer:
         logging.info("Калибровка temperature scaling и порогов...")
         calibrator = MarginCalibrator(self.model, self.val_ds)
         T = calibrator.fit_temperature()
+
+        os.makedirs(os.path.dirname(CFG.paths.temperature_path), exist_ok=True)
         joblib.dump(T, CFG.paths.temperature_path)
 
         thresholds = calibrator.find_best_thresholds()
+
+        os.makedirs(os.path.dirname(CFG.paths.thresholds_path), exist_ok=True)
         joblib.dump(thresholds, CFG.paths.thresholds_path)
 
     @staticmethod

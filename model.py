@@ -1,6 +1,4 @@
-import torch
 import torch.nn as nn
-from config import CFG
 
 # Directional MultiPair Transformer Classifier
 class DirectionalModel(nn.Module):

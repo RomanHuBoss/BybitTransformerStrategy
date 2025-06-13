@@ -1,7 +1,6 @@
 import os.path
 import pandas as pd
 from datetime import datetime
-from config import CFG
 import time
 
 def filter_closed_bars(df, timeframe_minutes):

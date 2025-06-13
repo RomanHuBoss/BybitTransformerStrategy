@@ -38,7 +38,7 @@ class AmplitudeTrainer:
         joblib.dump(self.engineer.scaler, CFG.paths.amplitude_scaler_path)
 
         logging.info("Генерация амплитудных меток...")
-        generator = AmplitudeLabelGenerator()
+        generator = AmplitudeLabelGenerator(CFG.labels.lookahead)
         amplitude_targets = generator.generate_amplitude_labels(self.df)
 
         # Нормализация амплитуды через ATR

@@ -1,6 +1,5 @@
-import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, UTC
 
 from hybrid_predictor import HybridPredictor
 from services.get_bybit_candles import get_bybit_candles
@@ -19,12 +18,12 @@ class SnapshotInference:
 
         await asyncio.gather(*tasks)
 
-        self.snapshot["timestamp"] = datetime.utcnow().isoformat()
+        self.snapshot["timestamp"] = datetime.now(UTC).isoformat()
         logging.info(f"Снимок обновлён. Активов: {len(self.snapshot) - 1}")
 
     async def process_symbol(self, symbol):
         try:
-            df = await get_bybit_candles(symbol, CFG.assets.timeframe, limit=CFG.assets.limit)
+            df = await get_bybit_candles(symbol, CFG.assets.timeframe, candles_num=CFG.assets.limit)
             result = self.predictor.predict(df)
             self.snapshot[symbol] = result
         except Exception as e:

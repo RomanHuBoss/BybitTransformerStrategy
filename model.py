@@ -1,11 +1,10 @@
 import torch.nn as nn
 
 class DirectionalModel(nn.Module):
-    def __init__(self, model_config, num_pairs):
+    def __init__(self, model_config):
         super(DirectionalModel, self).__init__()
 
         self.model_config = model_config
-        self.num_pairs = num_pairs
 
         self.input_proj = nn.Linear(model_config.input_dim, model_config.hidden_dim)
 
@@ -23,7 +22,7 @@ class DirectionalModel(nn.Module):
         self.output_head = nn.Sequential(
             nn.Linear(model_config.hidden_dim, model_config.hidden_dim),
             nn.ReLU(),
-            nn.Linear(model_config.hidden_dim, num_pairs * 3)
+            nn.Linear(model_config.hidden_dim, 3)
         )
 
     def forward(self, x):
@@ -31,7 +30,7 @@ class DirectionalModel(nn.Module):
         x = self.transformer_encoder(x)
         x = x[:, -1, :]
         x = self.output_head(x)
-        return x.view(x.size(0), 3)
+        return x
 
 
 # AmplitudeModel — регрессия амплитуды

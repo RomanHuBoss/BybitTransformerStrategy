@@ -57,7 +57,7 @@ class AmplitudeTrainer:
             raise ValueError("ATR признака не найдено в feature engineering")
 
         atr = self.df_feat['atr_long_pct'].values
-        close = self.df_feat['close'].values
+        close = self.df.loc[self.df_feat.index, 'close'].values
         amplitude_targets = self.df_feat['amplitude_target'].values
 
         y_norm = amplitude_targets / (atr * close + 1e-8)

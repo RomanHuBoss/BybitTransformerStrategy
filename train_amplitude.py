@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, TensorDataset
-from feature_engineering_v2_1_full import FeatureEngineer
+from feature_engineering import FeatureEngineer
 from config import CFG
 from amplitude_label_generator import AmplitudeLabelGenerator
 from sklearn.model_selection import train_test_split
@@ -54,7 +54,7 @@ class AmplitudeTrainer:
 
         # === Вот тут главное изменение: нормализация на ATR ===
         df_feat_valid = df_feat.copy()
-        atr = df_feat_valid['atr_14'].values  # или любую твою колонку ATR (проверь название!)
+        atr = df_feat_valid['atr_long_pct'].values
         atr[atr < 1e-6] = 1e-6  # защита от деления на ноль
 
         norm_amplitudes = amplitudes / atr

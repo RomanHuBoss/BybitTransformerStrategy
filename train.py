@@ -5,7 +5,7 @@ from sklearn.metrics import precision_recall_fscore_support, f1_score
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, TensorDataset
 from model import MultiPairDirectionalClassifier
-from feature_engineering_v2_1_full import FeatureEngineer
+from feature_engineering import FeatureEngineer
 from config import CFG
 from label_generator import DirectionalLabelGenerator
 from sklearn.model_selection import train_test_split

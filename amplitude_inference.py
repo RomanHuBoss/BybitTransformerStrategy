@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import json
 from config import CFG
-from feature_engineering_v2_1_full import FeatureEngineer
+from feature_engineering import FeatureEngineer
 from amplitude_regressor import AmplitudeRegressor
 import logging
 import os

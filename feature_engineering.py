@@ -124,7 +124,6 @@ class FeatureEngineer:
         body = (df['close'] - df['open']).abs()
         upper_shadow = df['high'] - df[['close', 'open']].max(axis=1)
         lower_shadow = df[['close', 'open']].min(axis=1) - df['low']
-        body_range = (df['high'] - df['low']) + 1e-6
         features['upper_shadow_ratio'] = (upper_shadow / (body + 1e-6)).shift(shift)
         features['lower_shadow_ratio'] = (lower_shadow / (body + 1e-6)).shift(shift)
 
@@ -153,7 +152,6 @@ class FeatureEngineer:
         # Volatility state regime
         features['volatility_state'] = (features['returns_std'] > features['returns_std'].rolling(100).median()).astype(int).shift(shift)
         features['volume_state'] = (df['volume'] > df['volume'].rolling(100).median()).astype(int).shift(shift)
-        features['breakout_asymmetry'] = (features['breakout_up_distance'] - features['breakout_down_distance']).shift(shift)
         features['risk_imbalance'] = (features['atr_long_pct'] / (features['fractal_width'] + 1e-6)).shift(shift)
 
         # RSI и Stochastic

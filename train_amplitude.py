@@ -10,7 +10,7 @@ import logging
 
 from feature_engineering import FeatureEngineer
 from model import AmplitudeModel
-from label_generator import AmplitudeLabelGenerator
+from amplitude_label_generator import AmplitudeLabelGenerator
 from config import CFG
 
 

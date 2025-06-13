@@ -4,6 +4,7 @@ import ta
 from scipy.stats import kurtosis, skew, linregress
 from sklearn.preprocessing import StandardScaler
 from ta.volatility import AverageTrueRange
+from ta.momentum import StochasticOscillator
 from config import CFG
 import logging
 
@@ -14,7 +15,7 @@ class FeatureEngineer:
         self.feature_columns = []
 
     def _adjust(self, base_window):
-        return max(2, int(base_window * CFG.train.timeframe / 30))
+        return max(2, int(base_window * CFG.assets.timeframe / 30))
 
     def generate_features(self, df: pd.DataFrame, fit: bool = False, use_logging: bool = True) -> pd.DataFrame:
         required_columns = ['open_time', 'open', 'high', 'low', 'close', 'volume']
@@ -23,7 +24,7 @@ class FeatureEngineer:
 
         df = df.copy()
         df['open_time'] = pd.to_datetime(df['open_time'])
-        shift = CFG.train.lookahead[CFG.train.timeframe]
+        shift = CFG.feature_engineering.default_shift
 
         for col in ['open', 'high', 'low', 'close', 'volume']:
             df[col] = df[col].astype(float)
@@ -87,7 +88,7 @@ class FeatureEngineer:
         long_window = self._adjust(20)
         atr_short = AverageTrueRange(df['high'], df['low'], df['close'], window=short_window).average_true_range()
         atr_long = AverageTrueRange(df['high'], df['low'], df['close'], window=long_window).average_true_range()
-        features['volatility_ratio'] = ((atr_short / (atr_long + 1e-6))).shift(shift + long_window - 1)
+        features['volatility_ratio'] = (atr_short / (atr_long + 1e-6)).shift(shift + long_window - 1)
 
         # Compression regimes
         std_window = self._adjust(20)
@@ -138,8 +139,11 @@ class FeatureEngineer:
         features['volatility_momentum_cross'] = (features['returns_std'] * features['momentum_10']).shift(shift)
         features['atr_vwap_cross'] = (features['atr_long_pct'] * features['vwap_deviation']).shift(shift)
         features['volatility_regime_cross'] = (features['volatility_ratio'] * features['range_compression']).shift(shift)
+
+        upper_tail = df['high'] - df[['close', 'open']].max(axis=1)
+        lower_tail = df[['close', 'open']].min(axis=1) - df['low']
+        features['tail_asymmetry'] = ((upper_tail - lower_tail) / (upper_tail + lower_tail + 1e-6)).shift(shift)
         features['shadow_tail_cross'] = (features['upper_shadow_ratio'] - features['lower_shadow_ratio']) * features['tail_asymmetry']
-        features['fractal_breakout_cross'] = (features['fractal_width'] * (features['breakout_up_distance'] + features['breakout_down_distance'])).shift(shift)
 
         # Directional Bias Regime Filter
         rolling_mean_window = self._adjust(20)

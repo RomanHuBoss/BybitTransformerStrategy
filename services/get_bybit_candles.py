@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException, status
 from pybit.unified_trading import HTTP
 import time
 
-def get_bybit_candles(symbol: str, timeframe: int, candles_num: int = 500):
+async def get_bybit_candles(symbol: str, timeframe: int, candles_num: int = 500):
     """
     Получить свечи для указанного символа.
 

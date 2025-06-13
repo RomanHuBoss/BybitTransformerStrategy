@@ -5,14 +5,14 @@ class CFG:
     # Пути к данным и моделям
     class paths:
         base = Path("./")
-        train_csv = base / "data" / "train_data.csv"
-        scaler_path = base / "artifacts" / "direction_scaler.joblib"
-        amplitude_scaler_path = base / "artifacts" / "amplitude_scaler.joblib"
-        amplitude_target_scaler_path = base / "artifacts" / "amplitude_target_scaler.joblib"
-        direction_model_path = base / "artifacts" / "direction_model.pth"
-        amplitude_model_path = base / "artifacts" / "amplitude_model.pth"
-        temperature_path = base / "artifacts" / "temperature.joblib"
-        thresholds_path = base / "artifacts" / "thresholds.joblib"
+        train_csv = base / "historical_data" / "BTCUSDT" / "30m" / "monthly" / "combined_csv.csv"
+        scaler_path = base / "artifacts" / "model_30m" / "direction_scaler.joblib"
+        amplitude_scaler_path = base / "artifacts" / "model_30m" / "amplitude_scaler.joblib"
+        amplitude_target_scaler_path = base / "artifacts" / "model_30m" / "amplitude_target_scaler.joblib"
+        direction_model_path = base / "artifacts" / "model_30m" / "direction_model.pth"
+        amplitude_model_path = base / "artifacts" / "model_30m" / "amplitude_model.pth"
+        temperature_path = base / "artifacts" / "model_30m" / "temperature.joblib"
+        thresholds_path = base / "artifacts" / "model_30m" / "thresholds.joblib"
 
     # Параметры обучения (общие для direction и amplitude)
     class train:
@@ -30,8 +30,8 @@ class CFG:
     # Параметры актива и данных
     class assets:
         symbols = ["BTCUSDT", "ETHUSDT", "XRPUSDT", "SOLUSDT"]
-        timeframe = "30"
-        limit = 500
+        timeframe = 30
+        limit = 1000
 
     # Параметры hybrid логики
     class hybrid:
@@ -42,6 +42,13 @@ class CFG:
         tp_multiplier = 1.0
         sl_multiplier = 1.0
         slippage = 0.0005
+        lookahead = 20
+        tp_sl_levels = [
+            (0.01, 0.005), (0.015, 0.005), (0.02, 0.005), (0.025, 0.005), (0.03, 0.005),
+            (0.02, 0.01), (0.025, 0.01), (0.03, 0.01), (0.035, 0.01), (0.04, 0.01),
+            (0.03, 0.015), (0.035, 0.015), (0.04, 0.015), (0.045, 0.015), (0.05, 0.015),
+            (0.04, 0.02), (0.05, 0.02), (0.06, 0.02), (0.07, 0.02), (0.08, 0.02),
+                        ]
 
     # Режимы генерации признаков
     class feature_engineering:

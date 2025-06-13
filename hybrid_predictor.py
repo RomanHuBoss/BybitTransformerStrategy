@@ -12,7 +12,20 @@ class HybridPredictor:
         self.feature_engineer = FeatureEngineer()
         self.feature_engineer.scaler = joblib.load(CFG.paths.scaler_path)
 
-        self.direction_model = DirectionalModel(input_size=len(self.feature_engineer.feature_columns))
+        class ModelConfig:
+            def __init__(self, input_dim):
+                self.input_dim = input_dim
+                self.hidden_dim = 128
+                self.n_layers = 2
+                self.n_heads = 4
+                self.dim_feedforward = 256
+                self.activation = 'gelu'
+                self.dropout = 0.1
+                self.layer_norm_eps = 1e-5
+
+        input_dim = len(self.feature_engineer.feature_columns)
+        model_cfg = ModelConfig(input_dim=input_dim)
+        self.direction_model = DirectionalModel(model_config=model_cfg, num_pairs=len(CFG.assets.symbols))
         self.direction_model.load_state_dict(torch.load(CFG.paths.direction_model_path))
         self.direction_model.eval()
 

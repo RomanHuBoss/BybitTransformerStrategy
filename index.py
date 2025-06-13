@@ -2,12 +2,21 @@ import asyncio
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
 from snapshot_inference import SnapshotInference
 from config import CFG
 
-app = FastAPI()
+snapshot_engine = SnapshotInference()
 
-# Разрешаем доступ с фронтенда
+@asynccontextmanager
+async def lifespan(_):
+    task = asyncio.create_task(snapshot_loop())
+    yield
+    task.cancel()
+
+app = FastAPI(lifespan=lifespan)
+
+# Чистый безопасный вызов CORS без всяких фабрик:
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -15,13 +24,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Инициализация snapshot движка
-snapshot_engine = SnapshotInference()
-
-@app.on_event("startup")
-async def startup_event():
-    asyncio.create_task(snapshot_loop())
 
 async def snapshot_loop():
     while True:
@@ -35,7 +37,6 @@ async def snapshot_loop():
 async def get_snapshot():
     return snapshot_engine.get_snapshot()
 
-# Для ручного обновления (опционально)
 @app.get("/force_update")
 async def force_update():
     await snapshot_engine.update_snapshot()

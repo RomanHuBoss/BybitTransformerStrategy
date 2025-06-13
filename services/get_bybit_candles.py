@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException, status
 from pybit.unified_trading import HTTP
 import time
 
-def get_bybit_candles(symbol: str, timeframe: int, candles_num: int):
+def get_bybit_candles(symbol: str, timeframe: int, candles_num: int = 500):
     """
     Получить свечи для указанного символа.
 
@@ -21,12 +21,12 @@ def get_bybit_candles(symbol: str, timeframe: int, candles_num: int):
             }
         )
 
-    if candles_num <= 0 or candles_num > 200:
+    if candles_num <= 0 or candles_num > 1000:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
                 "error": "Некорректный запрос числа свечей",
-                "details": "Допустимы значения в интервале от 1 до 200"
+                "details": "Допустимы значения в интервале от 1 до 1000"
             }
         )
 

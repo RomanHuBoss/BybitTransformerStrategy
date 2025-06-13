@@ -11,10 +11,12 @@ import time
 import os
 
 from services.get_bybit_candles import get_bybit_candles
-from services.bybit_candles_handlers import  bybit_candles_to_df
+from services.bybit_candles_handlers import  bybit_candles_to_df, filter_closed_bars
 from services.bybit_symbols_list import BybitSymbolsList
 from predictor import Predictor
+from hybrid_predictor import AdaptiveHybridPredictor
 from config import CFG
+from amplitude_predictor import AmplitudePredictor
 
 app = FastAPI()
 
@@ -22,7 +24,7 @@ CACHE = {}  # symbol -> {last_update, result}
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
-    with open("index.html", encoding="utf-8") as f:
+    with open("index_hybrid.html", encoding="utf-8") as f:
         return f.read()
 
 @app.get("/get_currency_pairs")
@@ -31,7 +33,7 @@ async def get_currency_pairs():
     return symbolsList.get_bybit_symbols_list(1000)
 
 @app.get("/predict_info")
-async def predict_info(symbol: str, timeframe: int, threshold: float = 0.7, max_prob_no_trade: float = 0.3):
+async def predict_info(symbol: str, timeframe: int, threshold: float = 0.7, max_prob_no_trade: float = 0.1):
     now = time.time()
     cache_key = f"{symbol}_{timeframe}_{threshold}_{max_prob_no_trade}"
     cache_entry = CACHE.get(cache_key)
@@ -40,6 +42,7 @@ async def predict_info(symbol: str, timeframe: int, threshold: float = 0.7, max_
         try:
             raw = get_bybit_candles(symbol, timeframe=timeframe, candles_num=200)
             df = bybit_candles_to_df(raw)
+            df = filter_closed_bars(df, timeframe_minutes=timeframe)
             dynamic_predictor = Predictor(model_folder="artifacts/model1", use_logging=False)
 
             result = dynamic_predictor.predict(df)
@@ -86,6 +89,50 @@ async def predict_info(symbol: str, timeframe: int, threshold: float = 0.7, max_
     #print(result)
 
     return result
+
+@app.get("/predict_hybrid")
+async def predict_hybrid(symbol: str, timeframe: int, tp_coef: float = 0.7, sl_coef: float = 0.3):
+    try:
+        raw = get_bybit_candles(symbol, timeframe=timeframe, candles_num=200)
+        df = bybit_candles_to_df(raw)
+        df = filter_closed_bars(df, timeframe_minutes=timeframe)
+
+        hybrid_predictor = AdaptiveHybridPredictor(
+            direction_model_folder="artifacts/direction_model_30m",
+            amplitude_model_folder="artifacts/amplitude_model_30m"
+        )
+
+        result = hybrid_predictor.predict(df, tp_coef=tp_coef, sl_coef=sl_coef)
+        return result
+
+    except Exception as e:
+        return JSONResponse({"error": f"Ошибка при получении данных: {str(e)}"}, status_code=500)
+
+
+# добавь временно в index.py
+@app.get("/debug_amplitude")
+async def debug_amplitude(symbol: str, timeframe: int):
+    raw = get_bybit_candles(symbol, timeframe=timeframe, candles_num=1000)
+    print(raw)
+    df = bybit_candles_to_df(raw)
+    df = filter_closed_bars(df, timeframe_minutes=timeframe)
+
+    amplitude_predictor = AmplitudePredictor("artifacts/amplitude_model_30m")
+    result = amplitude_predictor.predict_amplitude(df)
+    return result
+
+@app.get("/debug_directional")
+async def debug_directional(symbol: str, timeframe: int):
+    raw = get_bybit_candles(symbol, timeframe=timeframe, candles_num=1000)
+    df = bybit_candles_to_df(raw)
+    df = filter_closed_bars(df, timeframe_minutes=timeframe)
+
+    predictor = Predictor("artifacts/direction_model_30m", use_logging=False)
+    result = predictor.predict(df)
+    return {
+        "final_class": result['final_class'],
+        "final_confidence": result['final_confidence']
+    }
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))

@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8"/>
+    <title>Гибридные торговые сигналы (Production AutoUpdate)</title>
+    <style>
+        body {
+            font-family: "Roboto", sans-serif;
+            background-color: #f4f4f9;
+            margin: 0;
+            padding: 0;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 0.75rem;
+            padding: 1rem 2rem;
+        }
+        .tile {
+            background-color: #e0e0e0;
+            padding: 0.6rem;
+            border-radius: 6px;
+            text-align: center;
+            font-weight: 700;
+            font-size: 0.9rem;
+            transition: background-color 0.3s ease, transform 0.2s;
+            cursor: pointer;
+            height: 70px;
+            word-break: break-word;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .tile:hover { transform: translateY(-2px); }
+        .tile.red { background-color: #ef9a9a; color: #b71c1c; }
+        .tile.green { background-color: #a5d6a7; color: #1b5e20; }
+        .tile.gray { background-color: #eeeeee; color: #424242; }
+        h1 { text-align: center; margin: 1.5rem 0 1rem; }
+        #dialog {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+            display: none; justify-content: center; align-items: center; z-index: 1000;
+        }
+        #dialogBox {
+            background: white; padding: 1.5rem; border-radius: 8px;
+            max-width: 500px; width: 90%; height: 400px;
+            display: flex; flex-direction: column;
+        }
+        #dialogScrollable { overflow-y: auto; flex: 1; margin-top: 1rem; }
+    </style>
+</head>
+<body>
+<h1>Гибридные торговые сигналы (AutoUpdate)</h1>
+<div class="grid" id="currencyGrid"></div>
+
+<div id="dialog">
+    <div id="dialogBox">
+        <h2 id="dialogTitle">Торговая рекомендация</h2>
+        <div id="dialogScrollable"></div>
+        <div style="text-align:right; margin-top:1rem;">
+            <button onclick="document.getElementById('dialog').style.display='none'">Закрыть</button>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', async () => {
+    const grid = document.getElementById('currencyGrid');
+    const TIMEFRAME = 30;
+
+    const response = await fetch('/get_currency_pairs');
+    const data = await response.json();
+
+    for (let pair of data) {
+        const tile = document.createElement('div');
+        tile.className = 'tile gray';
+        tile.textContent = pair;
+        tile.setAttribute("symbol", pair);
+        grid.appendChild(tile);
+
+        tile.addEventListener('click', async () => {
+            try {
+                const res = await fetch(`/predict_hybrid?symbol=${pair}&timeframe=${TIMEFRAME}`);
+                const result = await res.json();
+
+                if (!result || result.error) {
+                    alert(`Нет данных для ${pair}`);
+                    return;
+                }
+
+                let direction = "➖ Нет сигнала";
+                if (result.direction === 0) direction = "🔴 Short";
+                if (result.direction === 2) direction = "🟢 Long";
+
+                const content = `
+                    <table style="width: 100%;">
+                        <tr><td>Сигнал:</td><td>${direction}</td></tr>
+                        <tr><td>Уверенность:</td><td>${(result.confidence * 100).toFixed(1)}%</td></tr>
+                        <tr><td>Амплитуда:</td><td>${(result.amplitude * 100).toFixed(2)}%</td></tr>
+                        <tr><td>TP:</td><td>${(result.tp * 100 / result.entry_price).toFixed(2)}%</td></tr>
+                        <tr><td>SL:</td><td>${(result.sl * 100 / result.entry_price).toFixed(2)}%</td></tr>
+                    </table>`;
+
+                document.getElementById("dialogTitle").textContent = pair;
+                document.getElementById("dialogScrollable").innerHTML = content;
+                document.getElementById("dialog").style.display = "flex";
+
+            } catch (err) {
+                alert(`Ошибка при загрузке данных для ${pair}`);
+                console.error(err);
+            }
+        });
+
+    function updateTile() {
+        fetch(`/predict_hybrid?symbol=${pair}&timeframe=${TIMEFRAME}`)
+            .then(res => res.json())
+            .then(result => {
+                tile.classList.remove('gray', 'red', 'green');
+
+                if (!result || result.error || result.signal_type === undefined) {
+                    tile.classList.add('gray');
+                    tile.innerHTML = `${pair}<br><small>Нет сигнала</small>`;
+                    return;
+                }
+
+                let directionText = "Нет сигнала";
+                if (result.signal_type === "none") {
+                    tile.classList.add('gray');
+                } else if (result.direction === 0) {
+                    tile.classList.add('red');
+                    directionText = "Short";
+                } else if (result.direction === 2) {
+                    tile.classList.add('green');
+                    directionText = "Long";
+                }
+
+                let tpDelta = result.tp ? (((result.tp - result.entry_price) / result.entry_price) * 100).toFixed(2) : "-";
+                let slDelta = result.sl ? (((result.sl - result.entry_price) / result.entry_price) * 100).toFixed(2) : "-";
+
+                tile.innerHTML = `${pair}<br><small>${directionText}<br>${tpDelta}% / ${slDelta}%</small>`;
+            })
+            .catch(err => {
+                console.error(`Ошибка при обновлении ${pair}:`, err);
+                tile.classList.add('gray');
+                tile.innerHTML = `${pair}<br><small>Ошибка</small>`;
+            });
+    }
+
+
+        updateTile(); // Первичное обновление при загрузке
+        setInterval(updateTile, 30000); // Автоматическое обновление каждые 30 секунд
+    }
+});
+</script>
+</body>
+</html>

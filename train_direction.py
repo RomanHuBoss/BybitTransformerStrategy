@@ -141,8 +141,8 @@ class DirectionalTrainer:
     def __init__(self):
         self.df = pd.read_csv(CFG.paths.train_csv)
         logging.info(f"Загружено {len(self.df)} строк.")
-        self.engineer = FeatureEngineer()
 
+        self.engineer = FeatureEngineer()
         logging.info("Генерация признаков...")
         self.df_feat = self.engineer.generate_features(self.df, fit=True)
 
@@ -152,7 +152,18 @@ class DirectionalTrainer:
         logging.info("Генерация меток SL/TP...")
         generator = DirectionalLabelGenerator(tp_sl_levels=CFG.labels.tp_sl_levels, lookahead=CFG.labels.lookahead)
         labels = generator.generate_labels(self.df)
-        self.df_feat['label'] = labels.flatten()
+
+        # Агрегируем метки в одну финальную метку per-row
+        agg_labels = np.where(
+            (labels == CFG.action2label.mapping["long"]).any(axis=1), CFG.action2label.mapping["long"],
+            np.where((labels == CFG.action2label.mapping["short"]).any(axis=1), CFG.action2label.mapping["short"],
+                     CFG.action2label.mapping["no-trade"])
+        )
+
+        # Sanity-check на всякий случай
+        assert len(self.df_feat) == len(agg_labels), "Размерности меток и признаков не совпадают"
+
+        self.df_feat['label'] = agg_labels
 
         self._log_class_balance()
 

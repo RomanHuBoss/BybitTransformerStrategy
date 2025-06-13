@@ -150,20 +150,33 @@ class DirectionalTrainer:
         joblib.dump(self.engineer.scaler, CFG.paths.scaler_path)
 
         logging.info("Генерация меток SL/TP...")
-        generator = DirectionalLabelGenerator(tp_sl_levels=CFG.labels.tp_sl_levels, lookahead=CFG.labels.lookahead)
+        generator = DirectionalLabelGenerator(
+            tp_sl_levels=CFG.labels.tp_sl_levels,
+            lookahead=CFG.labels.lookahead
+        )
         labels = generator.generate_labels(self.df)
 
         # Агрегируем метки в одну финальную метку per-row
         agg_labels = np.where(
-            (labels == CFG.action2label.mapping["long"]).any(axis=1), CFG.action2label.mapping["long"],
-            np.where((labels == CFG.action2label.mapping["short"]).any(axis=1), CFG.action2label.mapping["short"],
-                     CFG.action2label.mapping["no-trade"])
+            (labels == CFG.action2label.mapping["long"]).any(axis=1),
+            CFG.action2label.mapping["long"],
+            np.where(
+                (labels == CFG.action2label.mapping["short"]).any(axis=1),
+                CFG.action2label.mapping["short"],
+                CFG.action2label.mapping["no-trade"]
+            )
         )
 
-        # Sanity-check на всякий случай
-        assert len(self.df_feat) == len(agg_labels), "Размерности меток и признаков не совпадают"
+        # Превращаем метки в Series с индексом self.df
+        labels_series = pd.Series(agg_labels, index=self.df.index)
 
-        self.df_feat['label'] = agg_labels
+        # Склеиваем признаки и метки по индексу (чистый способ)
+        self.df_feat = self.df_feat.merge(
+            labels_series.rename("label"),
+            left_index=True,
+            right_index=True,
+            how='inner'
+        )
 
         self._log_class_balance()
 
@@ -179,7 +192,10 @@ class DirectionalTrainer:
 
         input_dim = self.X_train.shape[1]
         model_cfg = ModelConfig(input_dim=input_dim)
-        self.model = DirectionalModel(model_config=model_cfg, num_pairs=len(CFG.assets.symbols))
+        self.model = DirectionalModel(
+            model_config=model_cfg,
+            num_pairs=len(CFG.assets.symbols)
+        )
 
         self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=CFG.train.lr)
         self.criterion = CostSensitiveFocalLoss(gamma=CFG.train.focal_gamma)

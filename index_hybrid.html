@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8"/>
-    <title>Гибридные торговые сигналы (Production AutoUpdate)</title>
+    <title>Гибридные торговые сигналы (Clean AutoUpdate)</title>
     <style>
         body {
             font-family: "Roboto", sans-serif;
@@ -28,6 +28,7 @@
             height: 70px;
             word-break: break-word;
             display: flex;
+            flex-direction: column;  /* Теперь строки идут сверху вниз */
             align-items: center;
             justify-content: center;
         }
@@ -98,7 +99,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                         <tr><td>Амплитуда:</td><td>${(result.amplitude * 100).toFixed(2)}%</td></tr>
                         <tr><td>TP:</td><td>${(result.tp * 100 / result.entry_price).toFixed(2)}%</td></tr>
                         <tr><td>SL:</td><td>${(result.sl * 100 / result.entry_price).toFixed(2)}%</td></tr>
-                    </table>`;
+                    </table>
+                    <hr>
+                    <a href="https://www.bybit.com/trade/usdt/${pair}" target="_blank">Перейти на биржу</a>
+                    `;
 
                 document.getElementById("dialogTitle").textContent = pair;
                 document.getElementById("dialogScrollable").innerHTML = content;
@@ -110,41 +114,37 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         });
 
-    function updateTile() {
-        fetch(`/predict_hybrid?symbol=${pair}&timeframe=${TIMEFRAME}`)
-            .then(res => res.json())
-            .then(result => {
-                tile.classList.remove('gray', 'red', 'green');
+        function updateTile() {
+            fetch(`/predict_hybrid?symbol=${pair}&timeframe=${TIMEFRAME}`)
+                .then(res => res.json())
+                .then(result => {
+                    tile.classList.remove('gray', 'red', 'green');
 
-                if (!result || result.error || result.signal_type === undefined) {
+                    if (!result || result.error || result.signal_type === undefined || result.signal_type === "none") {
+                        tile.classList.add('gray');
+                        tile.textContent = pair;  // Только название валюты при отсутствии сигнала
+                        return;
+                    }
+
+                    // Цвет плитки по направлению
+                    if (result.direction === 0) {
+                        tile.classList.add('red');
+                    } else if (result.direction === 2) {
+                        tile.classList.add('green');
+                    }
+
+                    // Вычисляем TP/SL дельты
+                    let tpDelta = result.tp ? (((result.tp - result.entry_price) / result.entry_price) * 100).toFixed(1) : "-";
+                    let slDelta = result.sl ? (((result.sl - result.entry_price) / result.entry_price) * 100).toFixed(1) : "-";
+
+                    tile.innerHTML = `${pair}<br><small>${tpDelta}% / ${slDelta}%</small>`;
+                })
+                .catch(err => {
+                    console.error(`Ошибка при обновлении ${pair}:`, err);
                     tile.classList.add('gray');
-                    tile.innerHTML = `${pair}<br><small>Нет сигнала</small>`;
-                    return;
-                }
-
-                let directionText = "Нет сигнала";
-                if (result.signal_type === "none") {
-                    tile.classList.add('gray');
-                } else if (result.direction === 0) {
-                    tile.classList.add('red');
-                    directionText = "Short";
-                } else if (result.direction === 2) {
-                    tile.classList.add('green');
-                    directionText = "Long";
-                }
-
-                let tpDelta = result.tp ? (((result.tp - result.entry_price) / result.entry_price) * 100).toFixed(2) : "-";
-                let slDelta = result.sl ? (((result.sl - result.entry_price) / result.entry_price) * 100).toFixed(2) : "-";
-
-                tile.innerHTML = `${pair}<br><small>${directionText}<br>${tpDelta}% / ${slDelta}%</small>`;
-            })
-            .catch(err => {
-                console.error(`Ошибка при обновлении ${pair}:`, err);
-                tile.classList.add('gray');
-                tile.innerHTML = `${pair}<br><small>Ошибка</small>`;
-            });
-    }
-
+                    tile.textContent = pair;
+                });
+        }
 
         updateTile(); // Первичное обновление при загрузке
         setInterval(updateTile, 30000); // Автоматическое обновление каждые 30 секунд

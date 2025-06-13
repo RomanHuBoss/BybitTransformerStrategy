@@ -1,138 +1,35 @@
-# И Г-сподь сказал Моше следующее: «Скажи Аарону и детям его:»так благословляйте сынов Израилевых, говоря им:
-# «Да благословит тебя Г-сподь и охранит тебя; Да явит тебе Г-сподь светлый Свой лик и помилует тебя;
-# Да обратит Г-сподь лицо Свое к тебе и даст тебе мир»«.
-# И благословят они именем моим сынов Израиля, а Я благословлю их».
-
-
 import uvicorn
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
-import time
 import os
 
-from services.get_bybit_candles import get_bybit_candles
-from services.bybit_candles_handlers import  bybit_candles_to_df, filter_closed_bars
 from services.bybit_symbols_list import BybitSymbolsList
-from predictor import Predictor
-from hybrid_predictor import AdaptiveHybridPredictor
-from config import CFG
-from amplitude_predictor import AmplitudePredictor
+from snapshot_inference import SnapshotInferenceEngine
 
 app = FastAPI()
 
-CACHE = {}  # symbol -> {last_update, result}
+symbolsList = BybitSymbolsList()
+symbols = symbolsList.get_bybit_symbols_list(1000)
+snapshot_engine = SnapshotInferenceEngine(symbols, timeframe=30)
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
-    with open("index_hybrid.html", encoding="utf-8") as f:
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    html_path = os.path.join(base_dir, "index_hybrid.html")
+    with open(html_path, encoding="utf-8") as f:
         return f.read()
 
 @app.get("/get_currency_pairs")
 async def get_currency_pairs():
-    symbolsList = BybitSymbolsList()
-    return symbolsList.get_bybit_symbols_list(1000)
-
-@app.get("/predict_info")
-async def predict_info(symbol: str, timeframe: int, threshold: float = 0.7, max_prob_no_trade: float = 0.1):
-    now = time.time()
-    cache_key = f"{symbol}_{timeframe}_{threshold}_{max_prob_no_trade}"
-    cache_entry = CACHE.get(cache_key)
-
-    if not cache_entry or now - cache_entry["last_update"] > 30:
-        try:
-            raw = get_bybit_candles(symbol, timeframe=timeframe, candles_num=200)
-            df = bybit_candles_to_df(raw)
-            df = filter_closed_bars(df, timeframe_minutes=timeframe)
-            dynamic_predictor = Predictor(model_folder="artifacts/model1", use_logging=False)
-
-            result = dynamic_predictor.predict(df)
-            CACHE[cache_key] = {
-                "last_update": now,
-                "result": result
-            }
-
-        except Exception as e:
-            return JSONResponse({"error": f"Ошибка при получении данных: {str(e)}"}, status_code=500)
-
-    result = CACHE[cache_key]["result"]
-
-    # Фильтрация по threshold
-    filtered = {
-        "tp_sl_pairs": [],
-        "classes": [],
-        "confidences": [],
-        "probabilities": [],
-    }
-
-    if result is None:
-        return {"error": "Недостаточно данных для генерации сигнала"}
-
-    probs_list = result["probabilities"][0]  # снимаем лишний уровень вложенности
-
-    for i, (tp_sl, cls, conf) in enumerate(zip(result["tp_sl_pairs"], result["classes"], result["confidences"])):
-        probs = probs_list[i]  # теперь внутри уже обычный [3]
-        prob_no_trade = probs[CFG.action2label["no-trade"]]
-
-        if prob_no_trade < max_prob_no_trade and conf >= threshold and cls in [CFG.action2label["short"], CFG.action2label["long"]]:
-            filtered["tp_sl_pairs"].append(tp_sl)
-            filtered["classes"].append(cls)
-            filtered["confidences"].append(conf)
-            filtered["probabilities"].append(probs)
-
-    result = {
-        "symbol": symbol,
-        "timeframe": timeframe,
-        "threshold": threshold,
-        "timestamp": CACHE[cache_key]["last_update"],
-        "predictions": filtered,
-    }
-    #print(result)
-
-    return result
+    return symbols
 
 @app.get("/predict_hybrid")
 async def predict_hybrid(symbol: str, timeframe: int, tp_coef: float = 0.7, sl_coef: float = 0.3):
-    try:
-        raw = get_bybit_candles(symbol, timeframe=timeframe, candles_num=200)
-        df = bybit_candles_to_df(raw)
-        df = filter_closed_bars(df, timeframe_minutes=timeframe)
+    snapshot = snapshot_engine.get(symbol)
+    if not snapshot:
+        return JSONResponse({"error": "Нет данных для символа"}, status_code=404)
 
-        hybrid_predictor = AdaptiveHybridPredictor(
-            direction_model_folder="artifacts/direction_model_30m",
-            amplitude_model_folder="artifacts/amplitude_model_30m"
-        )
-
-        result = hybrid_predictor.predict(df, tp_coef=tp_coef, sl_coef=sl_coef)
-        return result
-
-    except Exception as e:
-        return JSONResponse({"error": f"Ошибка при получении данных: {str(e)}"}, status_code=500)
-
-
-# добавь временно в index.py
-@app.get("/debug_amplitude")
-async def debug_amplitude(symbol: str, timeframe: int):
-    raw = get_bybit_candles(symbol, timeframe=timeframe, candles_num=1000)
-    print(raw)
-    df = bybit_candles_to_df(raw)
-    df = filter_closed_bars(df, timeframe_minutes=timeframe)
-
-    amplitude_predictor = AmplitudePredictor("artifacts/amplitude_model_30m")
-    result = amplitude_predictor.predict_amplitude(df)
-    return result
-
-@app.get("/debug_directional")
-async def debug_directional(symbol: str, timeframe: int):
-    raw = get_bybit_candles(symbol, timeframe=timeframe, candles_num=1000)
-    df = bybit_candles_to_df(raw)
-    df = filter_closed_bars(df, timeframe_minutes=timeframe)
-
-    predictor = Predictor("artifacts/direction_model_30m", use_logging=False)
-    result = predictor.predict(df)
-    return {
-        "final_class": result['final_class'],
-        "final_confidence": result['final_confidence']
-    }
+    return snapshot["result"]
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))

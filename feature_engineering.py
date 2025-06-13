@@ -30,7 +30,7 @@ class FeatureEngineer:
 
         features = {}
 
-        # Временные признаки
+        # Временные признаки (seasonality encoding)
         features['hour_sin'] = np.sin(2 * np.pi * df['open_time'].dt.hour / 24)
         features['hour_cos'] = np.cos(2 * np.pi * df['open_time'].dt.hour / 24)
         features['minute_sin'] = np.sin(2 * np.pi * df['open_time'].dt.minute / 60)
@@ -38,7 +38,7 @@ class FeatureEngineer:
         features['dow_sin'] = np.sin(2 * np.pi * df['open_time'].dt.dayofweek / 7)
         features['dow_cos'] = np.cos(2 * np.pi * df['open_time'].dt.dayofweek / 7)
 
-        # Returns и волатильность
+        # Returns & Volatility Core
         returns = np.log(df['close'] / df['close'].shift(1))
         features['log_return_1'] = returns.shift(shift)
         features['returns_mean'] = returns.rolling(self._adjust(10)).mean().shift(shift)
@@ -47,7 +47,7 @@ class FeatureEngineer:
         features['returns_kurtosis'] = returns.rolling(self._adjust(20)).apply(lambda x: kurtosis(x)).shift(shift)
         features['range_pct'] = (df['high'] - df['low']) / df['close'].shift(1)
 
-        # ATR multi-windows
+        # ATR (short, mid, long)
         for label, w in [('short', 3), ('mid', 8), ('long', 20)]:
             window = self._adjust(w)
             atr = AverageTrueRange(df['high'], df['low'], df['close'], window=window)
@@ -57,16 +57,16 @@ class FeatureEngineer:
         df['vwap'] = (df['close'] * df['volume']).cumsum() / df['volume'].cumsum()
         features['vwap_deviation'] = (df['close'] / df['vwap'] - 1).shift(shift)
 
-        # Entropy
+        # Momentum over N bars
+        momentum_window = self._adjust(10)
+        features['momentum_10'] = (df['close'] - df['close'].shift(momentum_window)).shift(shift)
+
+        # Entropy of returns
         entropy_window = self._adjust(15)
         features['entropy_returns'] = returns.rolling(entropy_window).apply(
             lambda x: -np.sum((p := np.histogram(x, bins=10, density=True)[0]) * np.log1p(p + 1e-6))
             if len(x.dropna()) == entropy_window else np.nan
         ).shift(shift + entropy_window - 1)
-
-        # Momentum over N bars
-        momentum_window = self._adjust(10)
-        features['momentum_10'] = (df['close'] - df['close'].shift(momentum_window)).shift(shift)
 
         # Volume z-score
         vol_window = self._adjust(20)
@@ -80,18 +80,16 @@ class FeatureEngineer:
         rolling_low = df['low'].rolling(breakout_window).min()
         features['volatility_breakout_up_boost'] = (df['close'] > rolling_high.shift(1)).astype(int).shift(shift)
         features['volatility_breakout_down_boost'] = (df['close'] < rolling_low.shift(1)).astype(int).shift(shift)
-
-        # Stretch range
         features['stretch_range'] = (rolling_high - rolling_low).shift(shift)
 
-        # Volatility regime switching
+        # Volatility regime switching (ATR ratio)
         short_window = self._adjust(5)
         long_window = self._adjust(20)
         atr_short = AverageTrueRange(df['high'], df['low'], df['close'], window=short_window).average_true_range()
         atr_long = AverageTrueRange(df['high'], df['low'], df['close'], window=long_window).average_true_range()
         features['volatility_ratio'] = ((atr_short / (atr_long + 1e-6))).shift(shift + long_window - 1)
 
-        # Compression
+        # Compression regimes
         std_window = self._adjust(20)
         rolling_std = returns.rolling(std_window).std()
         rolling_range = (df['high'] - df['low']).rolling(std_window).mean()
@@ -101,7 +99,7 @@ class FeatureEngineer:
         rolling_range_gap = (df['high'] - df['low']).rolling(breakout_window).mean()
         features['opening_gap_vs_range'] = ((df['open'] - df['close'].shift(1)).abs() / (rolling_range_gap + 1e-6)).shift(shift + breakout_window - 1)
 
-        # Trend slope
+        # Trend slope & acceleration
         accel_window = self._adjust(10)
         trend_slope = df['close'].rolling(accel_window).apply(
             lambda x: linregress(np.arange(len(x)), x).slope).shift(shift + accel_window - 1)
@@ -125,22 +123,34 @@ class FeatureEngineer:
         body = (df['close'] - df['open']).abs()
         upper_shadow = df['high'] - df[['close', 'open']].max(axis=1)
         lower_shadow = df[['close', 'open']].min(axis=1) - df['low']
+        body_range = (df['high'] - df['low']) + 1e-6
         features['upper_shadow_ratio'] = (upper_shadow / (body + 1e-6)).shift(shift)
         features['lower_shadow_ratio'] = (lower_shadow / (body + 1e-6)).shift(shift)
 
-        # Feature crossing
+        # Fractal Swing High/Low
+        swing_high = (df['high'] > df['high'].shift(1)) & (df['high'] > df['high'].shift(-1))
+        swing_low = (df['low'] < df['low'].shift(1)) & (df['low'] < df['low'].shift(-1))
+        fractal_high = df['high'].where(swing_high).ffill()
+        fractal_low = df['low'].where(swing_low).ffill()
+        features['fractal_width'] = (fractal_high - fractal_low).shift(shift)
+
+        # Feature crossing interaction (V4.0 meta-cross)
         features['volatility_momentum_cross'] = (features['returns_std'] * features['momentum_10']).shift(shift)
         features['atr_vwap_cross'] = (features['atr_long_pct'] * features['vwap_deviation']).shift(shift)
+        features['volatility_regime_cross'] = (features['volatility_ratio'] * features['range_compression']).shift(shift)
+        features['shadow_tail_cross'] = (features['upper_shadow_ratio'] - features['lower_shadow_ratio']) * features['tail_asymmetry']
+        features['fractal_breakout_cross'] = (features['fractal_width'] * (features['breakout_up_distance'] + features['breakout_down_distance'])).shift(shift)
 
-        # Fractal swing
-        fractal_window = self._adjust(3)
-        features['fractal_swing_high'] = (
-            (df['high'] > df['high'].shift(1)) & (df['high'] > df['high'].shift(-1))
-        ).astype(int).shift(shift + fractal_window - 1)
+        # Directional Bias Regime Filter
+        rolling_mean_window = self._adjust(20)
+        rolling_mean_price = df['close'].rolling(rolling_mean_window).mean()
+        features['directional_bias'] = ((df['close'] - rolling_mean_price) / (rolling_mean_price + 1e-6)).shift(shift)
 
-        features['fractal_swing_low'] = (
-            (df['low'] < df['low'].shift(1)) & (df['low'] < df['low'].shift(-1))
-        ).astype(int).shift(shift + fractal_window - 1)
+        # Volatility state regime
+        features['volatility_state'] = (features['returns_std'] > features['returns_std'].rolling(100).median()).astype(int).shift(shift)
+        features['volume_state'] = (df['volume'] > df['volume'].rolling(100).median()).astype(int).shift(shift)
+        features['breakout_asymmetry'] = (features['breakout_up_distance'] - features['breakout_down_distance']).shift(shift)
+        features['risk_imbalance'] = (features['atr_long_pct'] / (features['fractal_width'] + 1e-6)).shift(shift)
 
         # RSI и Stochastic
         rsi_window = self._adjust(6)
@@ -158,7 +168,7 @@ class FeatureEngineer:
             (df['close'] > df['close'].shift(2)) & (features['rsi_short'] < features['rsi_short'].shift(2))
         ).astype(int).shift(shift)
 
-        # Candlestick patterns
+        # Candlestick engulfing patterns
         features['bullish_engulfing'] = (
             (df['close'] > df['open']) & (df['close'].shift(1) < df['open'].shift(1)) &
             (df['close'] > df['open'].shift(1)) & (df['open'] < df['close'].shift(1))
@@ -169,145 +179,16 @@ class FeatureEngineer:
             (df['close'] < df['open'].shift(1)) & (df['open'] > df['close'].shift(1))
         ).astype(int).shift(shift)
 
-        # Candle Body Percentile — позиция закрытия внутри свечи
-        body_range = (df['high'] - df['low']) + 1e-6
-        features['body_percentile'] = ((df['close'] - df['low']) / body_range).shift(shift)
-        # Чем ближе к 1 — тем ближе закрытие к high (бычья сила в свече)
-
-        # Tail Asymmetry — асимметрия теней вверх/вниз
-        upper_tail = df['high'] - df[['close', 'open']].max(axis=1)
-        lower_tail = df[['close', 'open']].min(axis=1) - df['low']
-        features['tail_asymmetry'] = ((upper_tail - lower_tail) / (upper_tail + lower_tail + 1e-6)).shift(shift)
-        # Положительное значение — доминирование верхних теней (бычье давление), отрицательное — медвежье.
-
-        # Swing Trend Length — длина серии одинаковых свечей по направлению
-        direction = np.sign(df['close'] - df['open'])
-        trend_group = (direction != direction.shift(1)).cumsum()
-        features['swing_trend_length'] = trend_group.groupby(trend_group).cumcount().shift(shift)
-        # Насколько устойчиво рынок движется в одном направлении.
-
-        # Modified Fractal Width — ширина между swing high и swing low (локальная волатильность)
-        swing_high = (df['high'] > df['high'].shift(1)) & (df['high'] > df['high'].shift(-1))
-        swing_low = (df['low'] < df['low'].shift(1)) & (df['low'] < df['low'].shift(-1))
-
-        fractal_high = df['high'].where(swing_high).ffill()
-        fractal_low = df['low'].where(swing_low).ffill()
-        features['fractal_width'] = (fractal_high - fractal_low).shift(shift)
-        # Локальный актуальный диапазон: ширина зоны между ближайшими экстремумами.
-
-        # Breakout Distance — насколько далеко закрытие ушло за уровни breakout
-        breakout_window = self._adjust(20)
-        rolling_high = df['high'].rolling(breakout_window).max()
-        rolling_low = df['low'].rolling(breakout_window).min()
-
-        breakout_up_dist = (df['close'] - rolling_high.shift(1)) / (rolling_high.shift(1) + 1e-6)
-        breakout_down_dist = (rolling_low.shift(1) - df['close']) / (rolling_low.shift(1) + 1e-6)
-
-        features['breakout_up_distance'] = breakout_up_dist.shift(shift)
-        features['breakout_down_distance'] = breakout_down_dist.shift(shift)
-        # Чем дальше пробой — тем больше уверенности модели в продолжении движения.
-
-        # Volatility × Momentum interaction
-        features['volatility_momentum_cross_v4'] = (features['returns_std'] * features['momentum_10']).shift(shift)
-
-        # ATR long × VWAP deviation interaction
-        features['atr_vwap_cross_v4'] = (features['atr_long_pct'] * features['vwap_deviation']).shift(shift)
-
-        # Volatility Ratio × Compression
-        features['volatility_regime_cross'] = (features['volatility_ratio'] * features['range_compression']).shift(
-            shift)
-
-        # Shadow Asymmetry × Tail Asymmetry (fine-grain pressure factor)
-        features['shadow_tail_cross'] = (features['upper_shadow_ratio'] - features['lower_shadow_ratio']) * features[
-            'tail_asymmetry']
-
-        # Fractal Width × Breakout Distance (локальное расширение после пробоя)
-        features['fractal_breakout_cross'] = (features['fractal_width'] * (
-                    features['breakout_up_distance'] + features['breakout_down_distance'])).shift(shift)
-
-        # Directional Bias (simple rolling mean direction)
-        rolling_mean_window = self._adjust(20)
-        rolling_mean_price = df['close'].rolling(rolling_mean_window).mean()
-        features['directional_bias'] = ((df['close'] - rolling_mean_price) / (rolling_mean_price + 1e-6)).shift(shift)
-        # Относительная позиция цены к своему среднему — грубая детекция фазовых отклонений
-
-        # Regime classifier: low vs high volatility threshold
-        features['volatility_state'] = (features['returns_std'] > features['returns_std'].rolling(100).median()).astype(
-            int).shift(shift)
-        # Binary feature: находимся ли мы в "турбулентном режиме" по сравнению с медианой std
-
-        # Volume state filter (объёмная нагрузка рынка)
-        features['volume_state'] = (df['volume'] > df['volume'].rolling(100).median()).astype(int).shift(shift)
-        # Аналогичная бинарная фильтрация по объёму — высокий/низкий режим активности
-
-        # Volatility asymmetry: up vs down breakout difference
-        features['breakout_asymmetry'] = (features['breakout_up_distance'] - features['breakout_down_distance']).shift(
-            shift)
-        # Насколько breakout больше вверх или вниз — прямой признак направления давления
-
-        # Risk imbalance score: ATR-long / fractal width
-        features['risk_imbalance'] = (features['atr_long_pct'] / (features['fractal_width'] + 1e-6)).shift(shift)
-        # Соотношение риска к текущему локальному диапазону swing'ов
-
-        # Range to ATR ratio — насколько дневной диапазон близок к ATR (нормализация волатильности)
-        features['range_atr_ratio'] = (
-                    (df['high'] - df['low']) / (features['atr_long_pct'] * df['close'] + 1e-6)).shift(shift)
-
-        # Shadow Ratio (верхняя/нижняя тень к диапазону свечи)
-        features['upper_shadow_pct'] = (upper_tail / body_range).shift(shift)
-        features['lower_shadow_pct'] = (lower_tail / body_range).shift(shift)
-        # Даёт нормализованную структуру свечи относительно её полной длины
-
-        # Tail risk asymmetry — разность между верхним и нижним normalized shadow
-        features['tail_risk_asymmetry'] = (features['upper_shadow_pct'] - features['lower_shadow_pct']).shift(shift)
-
-        # Composite trend-pressure interaction — усиление давления тренда через тело свечи
-        features['body_trend_cross'] = (features['body_percentile'] * features['swing_trend_length']).shift(shift)
-
-        # Fractal swing distance normalized — локальный breakout-risk фактор
-        features['fractal_breakout_ratio'] = (features['fractal_width'] / (rolling_range_gap + 1e-6)).shift(shift)
-
-        # Turbo breakout signal (грубый фильтр усиленного пробоя)
-        features['turbo_breakout'] = (
-            ((features['breakout_up_distance'] > 0.02) & (features['range_compression'] < 0.5))
-        ).astype(int).shift(shift)
-        # Только в случае, если breakout вверх достаточно силен + предшествовало сжатие
-
-        # Volatility exhaustion signal
-        features['volatility_exhaustion'] = (
-            (features['returns_std'] > 2 * features['returns_std'].rolling(100).median())
-        ).astype(int).shift(shift)
-        # Детектирует состояния после экстримально высокой волатильности (перегретость)
-
-        # Compression exhaustion (затяжное сжатие)
-        features['compression_exhaustion'] = (
-                (features['range_compression'] < 0.4) &
-                (features['range_compression'].rolling(30).mean() < 0.5)
-        ).astype(int).shift(shift)
-        # Маркер на смену режима после долгого консолидационного флэта
-
-        # Meta regime combined state: high volatility + high volume + directional bias
-        features['meta_regime_state'] = (
-                (features['volatility_state'] == 1) &
-                (features['volume_state'] == 1) &
-                (features['directional_bias'].abs() > 0.01)
-        ).astype(int).shift(shift)
-        # Структурный фильтр общего рискованного режима
-
-        # Absolute tail risk state: экстремальные асимметрии теней
-        features['absolute_tail_risk'] = (
-                (features['tail_asymmetry'].abs() > 0.5) &
-                (features['range_compression'] < 0.5)
-        ).astype(int).shift(shift)
-        # Маркер повышенной нестабильности структуры свечи
-
-        # Финальная сборка признаков
+        # Финальный сбор признаков в DataFrame
         features_df = pd.DataFrame(features, index=df.index)
+
+        # Очистка NaN и бесконечностей
         features_df.replace([np.inf, -np.inf], np.nan, inplace=True)
         features_df.dropna(inplace=True)
 
         self.feature_columns = features_df.columns.tolist()
 
+        # Стандартизация
         X = features_df
         if fit:
             self.scaler = StandardScaler()

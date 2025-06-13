@@ -28,8 +28,8 @@ class TrainConfig:
         30: 8,
     }
     auto_gamma_search = True
-    #gamma_values = [0.5, 0.7, 0.9, 1.1, 1.3, 1.5, 1.7]
-    gamma_values = [0.9]
+    gamma_values = [0.75, 0.8, 0.85, 0.9, 1]
+    #gamma_values = [0.9]
     gamma_search_epochs = 5
 
     threshold = 0.75

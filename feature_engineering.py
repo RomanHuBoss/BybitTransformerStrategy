@@ -207,6 +207,100 @@ class FeatureEngineer:
         features['breakout_down_distance'] = breakout_down_dist.shift(shift)
         # Чем дальше пробой — тем больше уверенности модели в продолжении движения.
 
+        # Volatility × Momentum interaction
+        features['volatility_momentum_cross_v4'] = (features['returns_std'] * features['momentum_10']).shift(shift)
+
+        # ATR long × VWAP deviation interaction
+        features['atr_vwap_cross_v4'] = (features['atr_long_pct'] * features['vwap_deviation']).shift(shift)
+
+        # Volatility Ratio × Compression
+        features['volatility_regime_cross'] = (features['volatility_ratio'] * features['range_compression']).shift(
+            shift)
+
+        # Shadow Asymmetry × Tail Asymmetry (fine-grain pressure factor)
+        features['shadow_tail_cross'] = (features['upper_shadow_ratio'] - features['lower_shadow_ratio']) * features[
+            'tail_asymmetry']
+
+        # Fractal Width × Breakout Distance (локальное расширение после пробоя)
+        features['fractal_breakout_cross'] = (features['fractal_width'] * (
+                    features['breakout_up_distance'] + features['breakout_down_distance'])).shift(shift)
+
+        # Directional Bias (simple rolling mean direction)
+        rolling_mean_window = self._adjust(20)
+        rolling_mean_price = df['close'].rolling(rolling_mean_window).mean()
+        features['directional_bias'] = ((df['close'] - rolling_mean_price) / (rolling_mean_price + 1e-6)).shift(shift)
+        # Относительная позиция цены к своему среднему — грубая детекция фазовых отклонений
+
+        # Regime classifier: low vs high volatility threshold
+        features['volatility_state'] = (features['returns_std'] > features['returns_std'].rolling(100).median()).astype(
+            int).shift(shift)
+        # Binary feature: находимся ли мы в "турбулентном режиме" по сравнению с медианой std
+
+        # Volume state filter (объёмная нагрузка рынка)
+        features['volume_state'] = (df['volume'] > df['volume'].rolling(100).median()).astype(int).shift(shift)
+        # Аналогичная бинарная фильтрация по объёму — высокий/низкий режим активности
+
+        # Volatility asymmetry: up vs down breakout difference
+        features['breakout_asymmetry'] = (features['breakout_up_distance'] - features['breakout_down_distance']).shift(
+            shift)
+        # Насколько breakout больше вверх или вниз — прямой признак направления давления
+
+        # Risk imbalance score: ATR-long / fractal width
+        features['risk_imbalance'] = (features['atr_long_pct'] / (features['fractal_width'] + 1e-6)).shift(shift)
+        # Соотношение риска к текущему локальному диапазону swing'ов
+
+        # Range to ATR ratio — насколько дневной диапазон близок к ATR (нормализация волатильности)
+        features['range_atr_ratio'] = (
+                    (df['high'] - df['low']) / (features['atr_long_pct'] * df['close'] + 1e-6)).shift(shift)
+
+        # Shadow Ratio (верхняя/нижняя тень к диапазону свечи)
+        features['upper_shadow_pct'] = (upper_tail / body_range).shift(shift)
+        features['lower_shadow_pct'] = (lower_tail / body_range).shift(shift)
+        # Даёт нормализованную структуру свечи относительно её полной длины
+
+        # Tail risk asymmetry — разность между верхним и нижним normalized shadow
+        features['tail_risk_asymmetry'] = (features['upper_shadow_pct'] - features['lower_shadow_pct']).shift(shift)
+
+        # Composite trend-pressure interaction — усиление давления тренда через тело свечи
+        features['body_trend_cross'] = (features['body_percentile'] * features['swing_trend_length']).shift(shift)
+
+        # Fractal swing distance normalized — локальный breakout-risk фактор
+        features['fractal_breakout_ratio'] = (features['fractal_width'] / (rolling_range_gap + 1e-6)).shift(shift)
+
+        # Turbo breakout signal (грубый фильтр усиленного пробоя)
+        features['turbo_breakout'] = (
+            ((features['breakout_up_distance'] > 0.02) & (features['range_compression'] < 0.5))
+        ).astype(int).shift(shift)
+        # Только в случае, если breakout вверх достаточно силен + предшествовало сжатие
+
+        # Volatility exhaustion signal
+        features['volatility_exhaustion'] = (
+            (features['returns_std'] > 2 * features['returns_std'].rolling(100).median())
+        ).astype(int).shift(shift)
+        # Детектирует состояния после экстримально высокой волатильности (перегретость)
+
+        # Compression exhaustion (затяжное сжатие)
+        features['compression_exhaustion'] = (
+                (features['range_compression'] < 0.4) &
+                (features['range_compression'].rolling(30).mean() < 0.5)
+        ).astype(int).shift(shift)
+        # Маркер на смену режима после долгого консолидационного флэта
+
+        # Meta regime combined state: high volatility + high volume + directional bias
+        features['meta_regime_state'] = (
+                (features['volatility_state'] == 1) &
+                (features['volume_state'] == 1) &
+                (features['directional_bias'].abs() > 0.01)
+        ).astype(int).shift(shift)
+        # Структурный фильтр общего рискованного режима
+
+        # Absolute tail risk state: экстремальные асимметрии теней
+        features['absolute_tail_risk'] = (
+                (features['tail_asymmetry'].abs() > 0.5) &
+                (features['range_compression'] < 0.5)
+        ).astype(int).shift(shift)
+        # Маркер повышенной нестабильности структуры свечи
+
         # Финальная сборка признаков
         features_df = pd.DataFrame(features, index=df.index)
         features_df.replace([np.inf, -np.inf], np.nan, inplace=True)

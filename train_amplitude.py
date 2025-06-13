@@ -7,6 +7,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import RobustScaler
 import joblib
 import logging
+import os
 
 from feature_engineering import FeatureEngineer
 from model import AmplitudeModel
@@ -30,28 +31,40 @@ class AmplitudeTrainer:
     def __init__(self):
         self.df = pd.read_csv(CFG.paths.train_csv)
         logging.info(f"Загружено {len(self.df)} строк.")
-        self.engineer = FeatureEngineer()
 
+        self.engineer = FeatureEngineer()
         logging.info("Генерация признаков...")
         self.df_feat = self.engineer.generate_features(self.df, fit=True)
 
+        os.makedirs(os.path.dirname(CFG.paths.amplitude_scaler_path), exist_ok=True)
         joblib.dump(self.engineer.scaler, CFG.paths.amplitude_scaler_path)
 
         logging.info("Генерация амплитудных меток...")
         generator = AmplitudeLabelGenerator(CFG.labels.lookahead)
         amplitude_targets = generator.generate_amplitude_labels(self.df)
 
+        # Приведение длины таргетов к длине признаков (по индексу)
+        amplitude_targets_series = pd.Series(amplitude_targets, index=self.df.index)
+        self.df_feat = self.df_feat.merge(
+            amplitude_targets_series.rename("amplitude_target"),
+            left_index=True,
+            right_index=True,
+            how='inner'
+        )
+
         # Нормализация амплитуды через ATR
-        if 'atr_long_pct' in self.df_feat.columns:
-            atr = self.df_feat['atr_long_pct'].values
-        else:
+        if 'atr_long_pct' not in self.df_feat.columns:
             raise ValueError("ATR признака не найдено в feature engineering")
 
-        y_norm = amplitude_targets / (atr * self.df['close'].values + 1e-8)
+        atr = self.df_feat['atr_long_pct'].values
+        close = self.df_feat['close'].values
+        amplitude_targets = self.df_feat['amplitude_target'].values
+
+        y_norm = amplitude_targets / (atr * close + 1e-8)
         self.df_feat['label'] = y_norm
 
         self.X_train, self.X_val, self.y_train, self.y_val = train_test_split(
-            self.df_feat.drop(columns=['label']),
+            self.df_feat.drop(columns=['label', 'amplitude_target']),
             self.df_feat['label'],
             test_size=CFG.train.val_size,
             shuffle=False
@@ -61,6 +74,7 @@ class AmplitudeTrainer:
         self.y_train_scaled = self.scaler_y.fit_transform(self.y_train.values.reshape(-1, 1))
         self.y_val_scaled = self.scaler_y.transform(self.y_val.values.reshape(-1, 1))
 
+        os.makedirs(os.path.dirname(CFG.paths.amplitude_target_scaler_path), exist_ok=True)
         joblib.dump(self.scaler_y, CFG.paths.amplitude_target_scaler_path)
 
         self.train_ds = AmplitudeDataset(self.X_train.values, self.y_train_scaled)

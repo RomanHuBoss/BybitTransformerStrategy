@@ -16,19 +16,6 @@ from dataset import SequenceDataset
 from config import CFG
 
 
-# Конфигурация модели трансформера (локальная для direction)
-class ModelConfig:
-    def __init__(self, input_dim):
-        self.input_dim = input_dim
-        self.hidden_dim = 128
-        self.n_layers = 2
-        self.n_heads = 4
-        self.dim_feedforward = 256
-        self.activation = 'gelu'
-        self.dropout = 0.1
-        self.layer_norm_eps = 1e-5
-
-
 class DirectionalTrainer:
     def __init__(self):
         self.window_size = CFG.feature_engineering.window_size
@@ -73,8 +60,8 @@ class DirectionalTrainer:
         self.train_ds = SequenceDataset(self.X_train, self.y_train, self.window_size)
         self.val_ds = SequenceDataset(self.X_val, self.y_val, self.window_size)
 
-        input_dim = self.X_train.shape[1]
-        model_cfg = ModelConfig(input_dim=input_dim)
+        model_cfg = CFG.DirectionModelConfig()
+        model_cfg.input_dim = self.X_train.shape[1]
         self.model = DirectionalModel(model_config=model_cfg)
 
         self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=CFG.train.lr)

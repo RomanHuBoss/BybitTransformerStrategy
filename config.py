@@ -64,3 +64,12 @@ class CFG:
             "long": 2
         }
 
+    class DirectionModelConfig:
+        input_dim = None  # обязательно задаётся позже (динамически)
+        hidden_dim = 128
+        n_layers = 2
+        n_heads = 4
+        dim_feedforward = 256
+        activation = 'gelu'
+        dropout = 0.1
+        layer_norm_eps = 1e-5

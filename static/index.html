@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Trading Signals</title>
+    <title>Trading Signals - Production v10</title>
     <style>
         body { font-family: Arial, sans-serif; background-color: #121212; color: #f0f0f0; margin: 0; padding: 0; }
         h1 { text-align: center; margin: 20px; color: #00ffc8; }
@@ -54,9 +54,8 @@ function render() {
     let count = 0;
     for (const [symbol, signal] of Object.entries(data)) {
         if (count >= limit) break;
-        const tp = signal.tp * 100;
-        const sl = signal.sl * 100;
-        const rr = sl > 0 ? tp / sl : 0;
+
+        const rr = signal.rr;
 
         if (signal.predicted_amplitude < minAmp || rr < minRR || signal.final_confidence < minConf) continue;
 
@@ -64,13 +63,13 @@ function render() {
         const dir = classNames[signal.final_class];
         card.className = `card ${dir}`;
         card.innerHTML = `<b>${symbol}</b><br>Conf: ${(signal.final_confidence*100).toFixed(1)}%<br>Amp: ${(signal.predicted_amplitude*100).toFixed(2)}%<br>RR: ${rr.toFixed(2)}`;
-        card.onclick = () => openModal(symbol, signal, tp, sl, rr);
+        card.onclick = () => openModal(symbol, signal);
         grid.appendChild(card);
         count++;
     }
 }
 
-function openModal(symbol, signal, tp, sl, rr) {
+function openModal(symbol, signal) {
     const modal = document.getElementById("modal-content");
     const hitOrderText = signal.hit_order === 0 ? "TP First" : (signal.hit_order === 1 ? "SL First" : "-");
 
@@ -79,7 +78,9 @@ function openModal(symbol, signal, tp, sl, rr) {
         <tr><td>Confidence:</td><td>${(signal.final_confidence*100).toFixed(1)}%</td></tr>
         <tr><td>Amplitude:</td><td>${(signal.predicted_amplitude*100).toFixed(2)}%</td></tr>
         <tr><td>Spread:</td><td>${(signal.amplitude_spread*100).toFixed(2)}%</td></tr>
-        <tr><td>RR:</td><td>${rr.toFixed(2)}</td></tr>
+        <tr><td>TP:</td><td>${(signal.tp*100).toFixed(2)}%</td></tr>
+        <tr><td>SL:</td><td>${(signal.sl*100).toFixed(2)}%</td></tr>
+        <tr><td>RR:</td><td>${signal.rr.toFixed(2)}</td></tr>
         <tr><td>HitOrder:</td><td>${hitOrderText}</td></tr>
     </table>
     <div style="text-align:center; margin-top:15px;">

@@ -16,9 +16,8 @@ snapshot_engine = SnapshotInference()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    task = asyncio.create_task(snapshot_engine.run_loop())
+    await snapshot_engine.preload_snapshot()
     yield
-    task.cancel()
 
 app = FastAPI(lifespan=lifespan)
 

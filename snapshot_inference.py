@@ -16,25 +16,30 @@ class SnapshotInference:
         self.max_symbols = 300
         self.snapshot = {}
         self.semaphore = Semaphore(10)
+        self.symbol_pointer = 0  # указатель на следующую партию
 
-    async def run_loop(self):
+    async def preload_snapshot(self):
+        asyncio.create_task(self.update_snapshot_loop())
+
+    async def update_snapshot_loop(self):
         while True:
-            await self.update_snapshot()
-            await asyncio.sleep(60)
+            await self.incremental_update()
+            await asyncio.sleep(1)  # минимальная пауза между партиями
 
-    async def update_snapshot(self):
-        symbols = self.symbols_all[:self.max_symbols]
-        logging.info(f"Обновление снимка: {len(symbols)} активов")
+    async def incremental_update(self):
+        batch_size = 10  # обновляем по 10 символов за раз
+        end_pointer = min(self.symbol_pointer + batch_size, len(self.symbols_all))
+        batch_symbols = self.symbols_all[self.symbol_pointer:end_pointer]
 
-        self.snapshot = {}
-        tasks = [self.process_symbol(symbol) for symbol in symbols]
-
+        tasks = [self.process_symbol(symbol) for symbol in batch_symbols]
         for future in asyncio.as_completed(tasks):
             symbol, result = await future
             if result is not None:
                 self.snapshot[symbol] = result
 
-        logging.info(f"Собрано валидных сигналов: {len(self.snapshot)}")
+        self.symbol_pointer = end_pointer if end_pointer < len(self.symbols_all) else 0
+
+        logging.info(f"Инкрементальная обработка: {self.symbol_pointer}/{len(self.symbols_all)}")
 
     async def process_symbol(self, symbol):
         async with self.semaphore:

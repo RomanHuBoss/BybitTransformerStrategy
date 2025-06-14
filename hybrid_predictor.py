@@ -17,7 +17,7 @@ class HybridPredictor:
         model_cfg.input_dim = input_dim
 
         # Direction model
-        self.direction_model = DirectionalModel(input_size=input_dim)
+        self.direction_model = DirectionalModel(model_cfg)
         self.direction_model.load_state_dict(torch.load(CFG.paths.direction_model_path))
         self.direction_model.eval()
 
@@ -73,6 +73,13 @@ class HybridPredictor:
 
         hit_order_class = int(hit_order_prob >= 0.5)
 
+        # --- Новый блок расчета TP, SL, RR ---
+        tp = up_p90
+        sl = down_p90
+
+        rr = tp / sl if sl > 0 else 0.0
+        rr = max(0.0, min(rr, 50.0))  # Ограничим RR разумным диапазоном
+
         return {
             "final_class": final_class,
             "final_confidence": confidence,
@@ -83,7 +90,10 @@ class HybridPredictor:
             "predicted_amplitude": float(amplitude_pred),
             "amplitude_spread": float(amplitude_spread),
             "hit_order_prob": float(hit_order_prob),
-            "hit_order": hit_order_class
+            "hit_order": hit_order_class,
+            "tp": float(tp),
+            "sl": float(sl),
+            "rr": float(rr)
         }
 
     @staticmethod

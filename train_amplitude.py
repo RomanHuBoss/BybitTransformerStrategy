@@ -7,7 +7,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 
 from feature_engineering import FeatureEngineer
-from dataset import SequenceDataset
+from dataset import TabularDataset  # Теперь используем новый датасет
 from model import AmplitudeModel
 from losses import AmplitudeLoss
 from config import CFG
@@ -27,13 +27,18 @@ class AmplitudeTrainer:
         y = np.load(CFG.paths.train_labels_amplitude)
         logging.info(f"✅ Данные загружены: {X.shape[0]} примеров, {X.shape[1]} признаков")
 
+        # Безопасная синхронизация длин
+        min_len = min(len(X), len(y))
+        X = X[:min_len]
+        y = y[:min_len]
+
         # Загружаем scaler и feature columns
         self.engineer = FeatureEngineer()
         self.engineer.scaler = joblib.load(CFG.paths.scaler_path)
         self.engineer.feature_columns = joblib.load(CFG.paths.feature_columns_path)
 
-        # Формируем датасет и dataloader
-        self.dataset = SequenceDataset(X, y, CFG.train.amplitude_window_size)
+        # Создаём TabularDataset вместо SequenceDataset
+        self.dataset = TabularDataset(X, y)
         self.dataloader = DataLoader(self.dataset, batch_size=CFG.train.batch_size, shuffle=True)
 
         input_size = len(self.engineer.feature_columns)

@@ -29,8 +29,10 @@ def get_validation_logits_and_labels():
     df_feat = engineer.generate_features(df, fit=False)
 
     generator = DirectionalLabelGenerator(
-        lookahead=CFG.labels.lookahead
+        shift=CFG.label_generation.direction_shift,
+        threshold=CFG.label_generation.direction_threshold
     )
+
     labels = generator.generate_labels(df)
     labels_series = pd.Series(labels, index=df.index)
 

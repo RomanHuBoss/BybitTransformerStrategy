@@ -11,10 +11,9 @@ class CFG:
         train_features_csv = base / "artifacts" / "model_30m" / "train_features.csv"
         train_labels_direction = base / "artifacts" / "model_30m" / "train_labels_direction.npy"
         train_labels_amplitude = base / "artifacts" / "model_30m" / "train_labels_amplitude.npy"
+        train_labels_hitorder = base / "artifacts" / "model_30m" / "train_labels_hitorder.npy"
 
         scaler_path = base / "artifacts" / "model_30m" / "direction_scaler.joblib"
-        amplitude_scaler_path = base / "artifacts" / "model_30m" / "amplitude_scaler.joblib"  # можешь удалить
-        amplitude_target_scaler_path = base / "artifacts" / "model_30m" / "amplitude_target_scaler.joblib"  # можешь удалить
 
         direction_model_path = base / "artifacts" / "model_30m" / "direction_model.pth"
         amplitude_model_path = base / "artifacts" / "model_30m" / "amplitude_model.pth"

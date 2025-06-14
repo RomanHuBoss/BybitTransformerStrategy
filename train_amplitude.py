@@ -72,6 +72,7 @@ class AmplitudeTrainer:
             "down_target": down_targets
         }, index=self.df.index)
 
+        # Синхронизация по индексам
         self.df_feat = self.df_feat.merge(targets_df, left_index=True, right_index=True, how="inner")
 
         if 'atr_long_pct' not in self.df_feat.columns:
@@ -80,12 +81,15 @@ class AmplitudeTrainer:
         atr = self.df_feat['atr_long_pct'].values
         close = self.df.loc[self.df_feat.index, 'close'].values
 
+        up_targets = self.df_feat['up_target'].values
+        down_targets = self.df_feat['down_target'].values
+
         valid_idx = (atr > 1e-8) & (~np.isnan(up_targets)) & (~np.isnan(down_targets))
         atr = atr[valid_idx]
         close = close[valid_idx]
-
-        up_targets = self.df_feat['up_target'].values[valid_idx]
-        down_targets = self.df_feat['down_target'].values[valid_idx]
+        up_targets = up_targets[valid_idx]
+        down_targets = down_targets[valid_idx]
+        self.df_feat = self.df_feat.iloc[valid_idx]
 
         y_up_raw = up_targets / (atr * close + 1e-8)
         y_down_raw = down_targets / (atr * close + 1e-8)
@@ -93,7 +97,6 @@ class AmplitudeTrainer:
         y_up_norm = np.log1p(y_up_raw)
         y_down_norm = np.log1p(y_down_raw)
 
-        self.df_feat = self.df_feat.iloc[valid_idx]
         self.df_feat['up_norm'] = y_up_norm
         self.df_feat['down_norm'] = y_down_norm
 

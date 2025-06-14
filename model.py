@@ -34,9 +34,8 @@ class DirectionalModel(nn.Module):
         x = self.output_head(x)
         return x
 
-
 # ======================================
-# Amplitude Model (двухголовый регрессор)
+# Amplitude Model (Quantile Head V4.0)
 # ======================================
 
 class AmplitudeModel(nn.Module):
@@ -53,11 +52,15 @@ class AmplitudeModel(nn.Module):
             nn.ReLU()
         )
 
-        self.up_head = nn.Linear(128, 1)
-        self.down_head = nn.Linear(128, 1)
+        self.up_p10_head = nn.Linear(128, 1)
+        self.up_p90_head = nn.Linear(128, 1)
+        self.down_p10_head = nn.Linear(128, 1)
+        self.down_p90_head = nn.Linear(128, 1)
 
     def forward(self, x):
         shared_out = self.shared(x)
-        up_out = self.up_head(shared_out)
-        down_out = self.down_head(shared_out)
-        return up_out, down_out
+        up_p10 = self.up_p10_head(shared_out)
+        up_p90 = self.up_p90_head(shared_out)
+        down_p10 = self.down_p10_head(shared_out)
+        down_p90 = self.down_p90_head(shared_out)
+        return up_p10, up_p90, down_p10, down_p90

@@ -11,6 +11,7 @@ class HybridPredictor:
     def __init__(self):
         self.feature_engineer = FeatureEngineer()
         self.feature_engineer.scaler = joblib.load(CFG.paths.scaler_path)
+        self.feature_engineer.feature_columns = joblib.load(CFG.paths.feature_columns_path)
 
         # Directional Model
         class ModelConfig:

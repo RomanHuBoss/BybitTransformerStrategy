@@ -1,3 +1,4 @@
+import joblib
 import pandas as pd
 import numpy as np
 import ta
@@ -12,7 +13,7 @@ import logging
 class FeatureEngineer:
     def __init__(self):
         self.scaler = None
-        self.feature_columns = []
+        self.feature_columns = None
 
     def _adjust(self, base_window):
         return max(2, int(base_window * CFG.assets.timeframe / 30))
@@ -246,6 +247,7 @@ class FeatureEngineer:
         features_df.dropna(inplace=True)
 
         self.feature_columns = features_df.columns.tolist()
+        joblib.dump(self.feature_columns, CFG.paths.feature_columns_path)
 
         # Стандартизация
         X = features_df

@@ -86,7 +86,7 @@ def temperature_loss(T, logits, labels):
 
 
 def calibrate_temperature():
-    logging.info("Запускаем калибровку температуры...")
+    logging.info("🚀 Старт Temperature Calibration...")
 
     logits, labels = get_validation_logits_and_labels()
 
@@ -94,7 +94,7 @@ def calibrate_temperature():
     result = minimize(temperature_loss, [1.0], args=(logits, labels), bounds=[(0.5, 5.0)])
     optimal_T = result.x[0]
 
-    logging.info(f"Оптимальная температура найдена: {optimal_T:.4f}")
+    logging.info(f"✅ Температура откалибрована: T = {optimal_T:.4f}")
 
     joblib.dump(optimal_T, CFG.paths.temperature_path)
     logging.info(f"Температура сохранена в {CFG.paths.temperature_path}")

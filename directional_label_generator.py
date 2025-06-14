@@ -39,4 +39,4 @@ if __name__ == "__main__":
     df['direction_class'] = labels
 
     df.to_csv(CFG.paths.train_csv, index=False)
-    logging.info("✅ Direction метки успешно сгенерированы и сохранены.")
+    logging.info(f"✅ Direction метки сгенерированы для {len(labels)} строк и сохранены.")

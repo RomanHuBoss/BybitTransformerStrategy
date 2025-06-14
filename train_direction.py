@@ -16,9 +16,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 
 class DirectionalTrainer:
     def __init__(self):
-        logging.info("Загрузка признаков и лейблов...")
+        logging.info("🚀 Начало обучения Direction модели")
         X = pd.read_csv(CFG.paths.train_features_csv).values
         y = np.load(CFG.paths.train_labels_direction)
+        logging.info(f"✅ Загружены признаки: {X.shape} и метки: {y.shape}")
 
         self.engineer = FeatureEngineer()
         self.engineer.scaler = joblib.load(CFG.paths.scaler_path)
@@ -35,8 +36,6 @@ class DirectionalTrainer:
         self.optimizer = optim.Adam(self.model.parameters(), lr=CFG.train.lr)
 
     def train(self):
-        logging.info("Обучение Direction модели...")
-        self.model.train()
         for epoch in range(CFG.train.epochs):
             total_loss = 0
             for X_batch, y_batch in self.dataloader:
@@ -46,10 +45,10 @@ class DirectionalTrainer:
                 loss.backward()
                 self.optimizer.step()
                 total_loss += loss.item()
-            logging.info(f"Эпоха {epoch + 1}: Loss {total_loss / len(self.dataloader):.6f}")
+            logging.info(f"🧮 Эпоха {epoch + 1}: Loss {total_loss / len(self.dataloader):.6f}")
 
         torch.save(self.model.state_dict(), CFG.paths.direction_model_path)
-        logging.info("Direction модель сохранена")
+        logging.info("✅ Direction модель успешно сохранена.")
 
 if __name__ == '__main__':
     trainer = DirectionalTrainer()

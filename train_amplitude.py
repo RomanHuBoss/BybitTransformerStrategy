@@ -12,18 +12,27 @@ from model import AmplitudeModel
 from losses import AmplitudeLoss
 from config import CFG
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+# Настройка логирования
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s"
+)
 
 class AmplitudeTrainer:
     def __init__(self):
-        logging.info("Загрузка признаков и лейблов...")
+        logging.info("🚀 Запуск обучения Amplitude модели")
+
+        # Загружаем признаки и таргеты
         X = pd.read_csv(CFG.paths.train_features_csv).values
         y = np.load(CFG.paths.train_labels_amplitude)
+        logging.info(f"✅ Данные загружены: {X.shape[0]} примеров, {X.shape[1]} признаков")
 
+        # Загружаем scaler и feature columns
         self.engineer = FeatureEngineer()
         self.engineer.scaler = joblib.load(CFG.paths.scaler_path)
         self.engineer.feature_columns = joblib.load(CFG.paths.feature_columns_path)
 
+        # Формируем датасет и dataloader
         self.dataset = SequenceDataset(X, y, CFG.train.amplitude_window_size)
         self.dataloader = DataLoader(self.dataset, batch_size=CFG.train.batch_size, shuffle=True)
 
@@ -34,7 +43,8 @@ class AmplitudeTrainer:
         self.optimizer = optim.Adam(self.model.parameters(), lr=CFG.train.lr)
 
     def train(self):
-        logging.info("Обучение Amplitude модели...")
+        logging.info("🚀 Старт цикла обучения")
+
         self.model.train()
         for epoch in range(CFG.train.epochs):
             total_loss = 0
@@ -45,10 +55,13 @@ class AmplitudeTrainer:
                 loss.backward()
                 self.optimizer.step()
                 total_loss += loss.item()
-            logging.info(f"Эпоха {epoch + 1}: Loss {total_loss / len(self.dataloader):.6f}")
 
+            avg_loss = total_loss / len(self.dataloader)
+            logging.info(f"🧮 Эпоха {epoch + 1}/{CFG.train.epochs} — Loss: {avg_loss:.6f}")
+
+        # Сохраняем модель
         torch.save(self.model.state_dict(), CFG.paths.amplitude_model_path)
-        logging.info("Amplitude модель сохранена")
+        logging.info(f"✅ Модель сохранена: {CFG.paths.amplitude_model_path}")
 
 if __name__ == '__main__':
     trainer = AmplitudeTrainer()

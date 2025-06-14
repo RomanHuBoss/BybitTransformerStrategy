@@ -38,4 +38,5 @@ if __name__ == "__main__":
     df['amplitude_down'] = down_ampl
 
     df.to_csv(CFG.paths.train_csv, index=False)
-    logging.info("✅ Amplitude метки успешно сгенерированы и сохранены.")
+    logging.info(f"✅ Amplitude метки сгенерированы для {len(up_ampl)} строк и сохранены.")
+

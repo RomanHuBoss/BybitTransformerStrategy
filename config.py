@@ -6,13 +6,21 @@ class CFG:
     class paths:
         base = Path("./")
         train_csv = base / "historical_data" / "BTCUSDT" / "30m" / "monthly" / "combined_csv.csv"
+
+        # новые файлы:
+        train_features_csv = base / "artifacts" / "model_30m" / "train_features.csv"
+        train_labels_direction = base / "artifacts" / "model_30m" / "train_labels_direction.npy"
+        train_labels_amplitude = base / "artifacts" / "model_30m" / "train_labels_amplitude.npy"
+
         scaler_path = base / "artifacts" / "model_30m" / "direction_scaler.joblib"
-        amplitude_scaler_path = base / "artifacts" / "model_30m" / "amplitude_scaler.joblib"
-        amplitude_target_scaler_path = base / "artifacts" / "model_30m" / "amplitude_target_scaler.joblib"
+        amplitude_scaler_path = base / "artifacts" / "model_30m" / "amplitude_scaler.joblib"  # можешь удалить
+        amplitude_target_scaler_path = base / "artifacts" / "model_30m" / "amplitude_target_scaler.joblib"  # можешь удалить
+
         direction_model_path = base / "artifacts" / "model_30m" / "direction_model.pth"
         amplitude_model_path = base / "artifacts" / "model_30m" / "amplitude_model.pth"
         temperature_path = base / "artifacts" / "model_30m" / "temperature.joblib"
         feature_columns_path = base / "artifacts" / "model_30m" / "features.joblib"
+
 
     # Параметры обучения (общие для direction и amplitude)
     class train:

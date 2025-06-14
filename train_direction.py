@@ -1,140 +1,65 @@
-import numpy as np
 import pandas as pd
-import torch
-from torch.utils.data import DataLoader
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report
 import joblib
 import logging
-import os
+import torch
+import torch.optim as optim
+from torch.utils.data import DataLoader
 
 from feature_engineering import FeatureEngineer
-from model import DirectionalModel  # <-- теперь строго централизованный импорт
-from losses import CostSensitiveFocalLoss
-from directional_label_generator import DirectionalLabelGenerator
 from dataset import SequenceDataset
+from model import DirectionalModel
+from losses import CostSensitiveFocalLoss
 from config import CFG
 
+# Настройка логирования
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s"
+)
 
 class DirectionalTrainer:
     def __init__(self):
-        self.window_size = CFG.feature_engineering.window_size
+        logging.info("Загрузка обучающих данных...")
+        self.df = pd.read_csv(CFG.paths.train_data_path)
 
-        self.df = pd.read_csv(CFG.paths.train_csv)
-        logging.info(f"Загружено {len(self.df)} строк.")
-
+        logging.info("Загрузка scaler и списка признаков...")
         self.engineer = FeatureEngineer()
-        logging.info("Генерация признаков...")
-        self.df_feat = self.engineer.generate_features(self.df, fit=True)
+        self.engineer.scaler = joblib.load(CFG.paths.scaler_path)
+        self.engineer.feature_columns = joblib.load(CFG.paths.feature_columns_path)
 
-        os.makedirs(os.path.dirname(CFG.paths.scaler_path), exist_ok=True)
-        joblib.dump(self.engineer.scaler, CFG.paths.scaler_path)
+        logging.info("Генерация признаков для обучения...")
+        self.df_feat = self.engineer.generate_features(self.df, fit=False)
 
-        logging.info("Генерация directional меток...")
-        generator = DirectionalLabelGenerator(lookahead=CFG.labels.lookahead)
-        labels = generator.generate_labels(self.df)
+        X = self.df_feat[self.engineer.feature_columns].values
+        y = self.df_feat['direction_class'].values  # <- обязательно должен быть такой столбец в твоих фичах
 
-        labels_series = pd.Series(labels, index=self.df.index)
-
-        # Безопасная синхронизация по индексам
-        self.df_feat = self.df_feat.merge(
-            labels_series.rename("label"),
-            left_index=True, right_index=True, how="inner"
-        )
-
-        # Удаляем потенциальные строки с NaN
-        self.df_feat = self.df_feat.dropna(subset=["label"])
-
-        self._log_class_balance()
-
-        X = self.df_feat.drop(columns=['label']).values
-        y = self.df_feat['label'].astype(int).values
-
-        self.X_train, self.X_val, self.y_train, self.y_val = train_test_split(
-            X, y, test_size=CFG.train.val_size, shuffle=False
-        )
-
-        assert len(self.X_train) == len(self.y_train), "Train: длины X и y не совпадают"
-        assert len(self.X_val) == len(self.y_val), "Val: длины X и y не совпадают"
-
-        self.train_ds = SequenceDataset(self.X_train, self.y_train, self.window_size)
-        self.val_ds = SequenceDataset(self.X_val, self.y_val, self.window_size)
+        self.dataset = SequenceDataset(X, y, CFG.train.direction_window_size)
+        self.dataloader = DataLoader(self.dataset, batch_size=CFG.train.batch_size, shuffle=True)
 
         model_cfg = CFG.DirectionModelConfig()
-        model_cfg.input_dim = self.X_train.shape[1]
-        self.model = DirectionalModel(model_config=model_cfg)
+        model_cfg.input_dim = len(self.engineer.feature_columns)
+        self.model = DirectionalModel(model_cfg)
 
-        self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=CFG.train.lr)
-        self.criterion = CostSensitiveFocalLoss(gamma=CFG.train.focal_gamma)
-
-    def _log_class_balance(self):
-        counts = self.df_feat['label'].value_counts()
-        total = len(self.df_feat)
-        for cls, cnt in counts.items():
-            pct = cnt / total * 100
-            logging.info(f"Класс {cls}: {cnt} примеров ({pct:.2f}%)")
+        self.criterion = CostSensitiveFocalLoss(alpha=None, gamma=2.0, label_smoothing=0.0)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=CFG.train.lr)
 
     def train(self):
-        best_profit_f1 = -np.inf
-
-        train_loader = DataLoader(self.train_ds, batch_size=CFG.train.batch_size, shuffle=True)
-        val_loader = DataLoader(self.val_ds, batch_size=CFG.train.batch_size, shuffle=False)
-
-        for epoch in range(1, CFG.train.epochs + 1):
-            self.model.train()
+        logging.info("Начало обучения Directional модели...")
+        self.model.train()
+        for epoch in range(CFG.train.epochs):
             total_loss = 0
-
-            for X_batch, y_batch in train_loader:
+            for X_batch, y_batch in self.dataloader:
                 self.optimizer.zero_grad()
-                logits = self.model(X_batch)
-                loss = self.criterion(logits, y_batch)
+                output = self.model(X_batch)
+                loss = self.criterion(output, y_batch)
                 loss.backward()
                 self.optimizer.step()
                 total_loss += loss.item()
+            logging.info(f"Эпоха {epoch + 1}/{CFG.train.epochs} — Loss: {total_loss / len(self.dataloader):.6f}")
 
-            val_loss, profit_f1 = self.validate(val_loader)
-
-            logging.info(
-                f"Эпоха {epoch} | Train Loss: {total_loss/len(train_loader):.4f} | Val Loss: {val_loss:.4f} | Profit F1: {profit_f1:.4f}"
-            )
-
-            if profit_f1 > best_profit_f1:
-                best_profit_f1 = profit_f1
-                torch.save(self.model.state_dict(), CFG.paths.direction_model_path)
-                logging.info(f"Сохранена новая лучшая модель (Profit F1={profit_f1:.4f})")
-
-    def validate(self, val_loader):
-        self.model.eval()
-        total_loss = 0
-        all_logits, all_labels = [], []
-
-        with torch.no_grad():
-            for X_batch, y_batch in val_loader:
-                logits = self.model(X_batch)
-                loss = self.criterion(logits, y_batch)
-                total_loss += loss.item()
-                all_logits.append(logits.numpy())
-                all_labels.append(y_batch.numpy())
-
-        logits = np.concatenate(all_logits)
-        labels = np.concatenate(all_labels)
-        probs = self._softmax(logits)
-        preds = np.argmax(probs, axis=1)
-
-        labels_str = list(map(str, labels))
-        preds_str = list(map(str, preds))
-        cls_report = classification_report(labels_str, preds_str, output_dict=True, zero_division=0)
-
-        profit_f1 = np.mean([cls_report['0']['f1-score'], cls_report['2']['f1-score']])
-        return total_loss / len(val_loader), profit_f1
-
-    @staticmethod
-    def _softmax(x):
-        e_x = np.exp(x - np.max(x, axis=1, keepdims=True))
-        return e_x / e_x.sum(axis=1, keepdims=True)
-
+        torch.save(self.model.state_dict(), CFG.paths.direction_model_path)
+        logging.info("Directional модель успешно сохранена.")
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO)
     trainer = DirectionalTrainer()
     trainer.train()

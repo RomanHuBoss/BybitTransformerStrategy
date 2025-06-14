@@ -242,12 +242,21 @@ class FeatureEngineer:
         # Финальный сбор признаков в DataFrame
         features_df = pd.DataFrame(features, index=df.index)
 
-        # Очистка NaN и бесконечностей
         features_df.replace([np.inf, -np.inf], np.nan, inplace=True)
         features_df.dropna(inplace=True)
 
-        self.feature_columns = features_df.columns.tolist()
-        joblib.dump(self.feature_columns, CFG.paths.feature_columns_path)
+        # === На этапе fit: сохраняем оригинальные фичи ===
+        if fit:
+            self.feature_columns = features_df.columns.tolist()
+            joblib.dump(self.feature_columns, CFG.paths.feature_columns_path)
+        else:
+            # === На инференсе: восстанавливаем отсутствующие фичи ===
+            for col in self.feature_columns:
+                if col not in features_df.columns:
+                    features_df[col] = np.nan
+
+            features_df = features_df[self.feature_columns]
+            features_df.fillna(0, inplace=True)
 
         # Стандартизация
         X = features_df

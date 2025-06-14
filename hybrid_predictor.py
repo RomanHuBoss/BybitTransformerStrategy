@@ -47,11 +47,16 @@ class HybridPredictor:
         with torch.no_grad():
             up_p10_pred, up_p90_pred, down_p10_pred, down_p90_pred = self.amplitude_model(X_tensor)
 
-            up_p10 = self.amplitude_up_scaler.inverse_transform([[up_p10_pred.numpy()[0, 0]]])[0, 0]
-            up_p90 = self.amplitude_up_scaler.inverse_transform([[up_p90_pred.numpy()[0, 0]]])[0, 0]
+            up_p10_val = up_p10_pred.item()
+            up_p90_val = up_p90_pred.item()
+            down_p10_val = down_p10_pred.item()
+            down_p90_val = down_p90_pred.item()
 
-            down_p10 = self.amplitude_down_scaler.inverse_transform([[down_p10_pred.numpy()[0, 0]]])[0, 0]
-            down_p90 = self.amplitude_down_scaler.inverse_transform([[down_p90_pred.numpy()[0, 0]]])[0, 0]
+            up_p10 = self.amplitude_up_scaler.inverse_transform([[up_p10_val]])[0, 0]
+            up_p90 = self.amplitude_up_scaler.inverse_transform([[up_p90_val]])[0, 0]
+
+            down_p10 = self.amplitude_down_scaler.inverse_transform([[down_p10_val]])[0, 0]
+            down_p90 = self.amplitude_down_scaler.inverse_transform([[down_p90_val]])[0, 0]
 
             amplitude_pred = max(up_p90, down_p90)
             amplitude_spread = max(up_p90 - up_p10, down_p90 - down_p10)

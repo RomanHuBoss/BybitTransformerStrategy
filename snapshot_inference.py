@@ -4,6 +4,7 @@ from datetime import datetime, UTC
 
 from hybrid_predictor import HybridPredictor
 from services.get_bybit_candles import get_bybit_candles
+from services.bybit_candles_handlers import bybit_candles_to_df
 from config import CFG
 
 
@@ -24,7 +25,7 @@ class SnapshotInference:
 
     async def process_symbol(self, symbol):
         try:
-            df = await get_bybit_candles(symbol, CFG.assets.timeframe, candles_num=CFG.assets.limit)
+            df = bybit_candles_to_df(await get_bybit_candles(symbol, CFG.assets.timeframe, candles_num=CFG.assets.limit))
             result = self.predictor.predict(df)
             self.snapshot[symbol] = result
         except Exception as e:

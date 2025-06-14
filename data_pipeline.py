@@ -39,6 +39,7 @@ if __name__ == "__main__":
         run_script("prepare_features.py")
         run_script("train_direction.py")
         run_script("train_amplitude.py")
+        run_script("train_hit_order.py")
         run_script("temperature_calibration.py")
         logging.info("=== 🎯 Полный пайплайн завершён успешно ===")
     except Exception as e:

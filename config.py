@@ -17,6 +17,8 @@ class CFG:
 
         direction_model_path = base / "artifacts" / "model_30m" / "direction_model.pth"
         amplitude_model_path = base / "artifacts" / "model_30m" / "amplitude_model.pth"
+        hit_order_model_path = base / "artifacts" / "model_30m" / "hit_order_model.pth"
+
         temperature_path = base / "artifacts" / "model_30m" / "temperature.joblib"
         feature_columns_path = base / "artifacts" / "model_30m" / "features.joblib"
 

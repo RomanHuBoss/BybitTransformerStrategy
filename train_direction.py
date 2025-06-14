@@ -51,20 +51,10 @@ class DirectionalTrainer:
         joblib.dump(self.engineer.scaler, CFG.paths.scaler_path)
 
         logging.info("Генерация меток SL/TP...")
-        generator = DirectionalLabelGenerator(tp_sl_levels=CFG.labels.tp_sl_levels,
-                                              lookahead=CFG.labels.lookahead)
+        generator = DirectionalLabelGenerator(lookahead=CFG.labels.lookahead)
         labels = generator.generate_labels(self.df)
-        agg_labels = np.where(
-            (labels == CFG.action2label.mapping["long"]).any(axis=1),
-            CFG.action2label.mapping["long"],
-            np.where(
-                (labels == CFG.action2label.mapping["short"]).any(axis=1),
-                CFG.action2label.mapping["short"],
-                CFG.action2label.mapping["no-trade"]
-            )
-        )
 
-        labels_series = pd.Series(agg_labels, index=self.df.index)
+        labels_series = pd.Series(labels, index=self.df.index)
 
         self.df_feat = self.df_feat.merge(
             labels_series.rename("label"),

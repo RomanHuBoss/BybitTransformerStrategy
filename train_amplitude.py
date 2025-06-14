@@ -43,7 +43,6 @@ class AmplitudeTrainer:
         generator = AmplitudeLabelGenerator(CFG.labels.lookahead)
         amplitude_targets = generator.generate_amplitude_labels(self.df)
 
-        # Приведение длины таргетов к длине признаков (по индексу)
         amplitude_targets_series = pd.Series(amplitude_targets, index=self.df.index)
         self.df_feat = self.df_feat.merge(
             amplitude_targets_series.rename("amplitude_target"),
@@ -52,7 +51,6 @@ class AmplitudeTrainer:
             how='inner'
         )
 
-        # Нормализация амплитуды через ATR
         if 'atr_long_pct' not in self.df_feat.columns:
             raise ValueError("ATR признака не найдено в feature engineering")
 
@@ -60,7 +58,19 @@ class AmplitudeTrainer:
         close = self.df.loc[self.df_feat.index, 'close'].values
         amplitude_targets = self.df_feat['amplitude_target'].values
 
-        y_norm = amplitude_targets / (atr * close + 1e-8)
+        # Защита от division by zero
+        valid_idx = (atr > 1e-8) & (~np.isnan(amplitude_targets))
+        atr = atr[valid_idx]
+        close = close[valid_idx]
+        amplitude_targets = amplitude_targets[valid_idx]
+
+        y_raw = amplitude_targets / (atr * close + 1e-8)
+        y_raw = np.clip(y_raw, -20, 20)
+
+        # Логарифмическая трансформация
+        y_norm = np.log1p(np.abs(y_raw)) * np.sign(y_raw)
+
+        self.df_feat = self.df_feat.iloc[valid_idx]
         self.df_feat['label'] = y_norm
 
         self.X_train, self.X_val, self.y_train, self.y_val = train_test_split(

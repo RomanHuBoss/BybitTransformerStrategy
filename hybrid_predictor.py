@@ -25,7 +25,7 @@ class HybridPredictor:
 
         input_dim = len(self.feature_engineer.feature_columns)
         model_cfg = ModelConfig(input_dim=input_dim)
-        self.direction_model = DirectionalModel(model_config=model_cfg, num_pairs=len(CFG.assets.symbols))
+        self.direction_model = DirectionalModel(model_config=model_cfg)
         self.direction_model.load_state_dict(torch.load(CFG.paths.direction_model_path))
         self.direction_model.eval()
 

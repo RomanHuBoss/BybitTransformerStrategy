@@ -181,6 +181,63 @@ class FeatureEngineer:
             (df['close'] < df['open'].shift(1)) & (df['open'] > df['close'].shift(1))
         ).astype(int).shift(shift)
 
+        # === FEATURE BOOSTING BLOCK ===
+
+        # Return cascade (multi-lag returns)
+        for lag in [3, 5, 10, 20, 30]:
+            features[f'return_lag_{lag}'] = np.log(df['close'] / df['close'].shift(lag)).shift(shift)
+
+        # Volatility clusters
+        for window in [5, 10, 20, 50]:
+            features[f'vol_std_{window}'] = df['close'].rolling(window).std().shift(shift)
+
+        features['vol_ratio_5_20'] = (features['vol_std_5'] / (features['vol_std_20'] + 1e-8)).shift(shift)
+        features['vol_ratio_10_50'] = (features['vol_std_10'] / (features['vol_std_50'] + 1e-8)).shift(shift)
+
+        # Momentum indicators
+        features['momentum_10'] = (df['close'] - df['close'].shift(10)).shift(shift)
+
+        # RSI + StochRSI
+        rsi_window = 14
+        stoch_window = 14
+        features['rsi_14'] = ta.momentum.RSIIndicator(close=df['close'], window=rsi_window).rsi().shift(shift + rsi_window - 1)
+        features['stoch_rsi'] = ta.momentum.stochrsi(df['close'], window=stoch_window).shift(shift + stoch_window - 1)
+
+        # CCI, Williams %R
+        features['cci'] = ta.trend.cci(df['high'], df['low'], df['close'], window=20).shift(shift + 20 - 1)
+        features['williams_r'] = ta.momentum.williams_r(df['high'], df['low'], df['close'], lbp=14).shift(shift + 14 - 1)
+
+        # EMA cross
+        ema_fast = df['close'].ewm(span=10).mean()
+        ema_slow = df['close'].ewm(span=50).mean()
+        features['ema_fast'] = ema_fast.shift(shift)
+        features['ema_slow'] = ema_slow.shift(shift)
+        features['ema_diff'] = (ema_fast - ema_slow).shift(shift)
+        features['ema_ratio'] = (ema_fast / (ema_slow + 1e-8)).shift(shift)
+
+        # Candle structure
+        body = (df['close'] - df['open']).shift(shift)
+        upper_shadow = (df['high'] - df[['close', 'open']].max(axis=1)).shift(shift)
+        lower_shadow = (df[['close', 'open']].min(axis=1) - df['low']).shift(shift)
+        features['candle_body'] = body
+        features['upper_shadow'] = upper_shadow
+        features['lower_shadow'] = lower_shadow
+        features['body_to_range'] = (body / (df['high'] - df['low'] + 1e-8)).shift(shift)
+
+        # Cross interaction terms
+        features['rsi_over_vol'] = (features['rsi_14'] / (features['vol_std_10'] + 1e-8)).shift(shift)
+        features['momentum_over_vol'] = (features['momentum_10'] / (features['vol_std_10'] + 1e-8)).shift(shift)
+        features['ema_diff_over_vol'] = (features['ema_diff'] / (features['vol_std_10'] + 1e-8)).shift(shift)
+
+        # Hidden Hilbert phase (если scipy доступен)
+        try:
+            from scipy.signal import hilbert
+            analytic_signal = hilbert(df['close'].ffill().values)
+            hilbert_phase = np.angle(analytic_signal)
+            features['hilbert_phase'] = pd.Series(hilbert_phase, index=df.index).shift(shift)
+        except Exception as e:
+            features['hilbert_phase'] = np.nan  # fallback
+
         # Финальный сбор признаков в DataFrame
         features_df = pd.DataFrame(features, index=df.index)
 

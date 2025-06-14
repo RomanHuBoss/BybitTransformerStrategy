@@ -12,7 +12,6 @@ class CFG:
         direction_model_path = base / "artifacts" / "model_30m" / "direction_model.pth"
         amplitude_model_path = base / "artifacts" / "model_30m" / "amplitude_model.pth"
         temperature_path = base / "artifacts" / "model_30m" / "temperature.joblib"
-        thresholds_path = base / "artifacts" / "model_30m" / "thresholds.joblib"
         feature_columns_path = base / "artifacts" / "model_30m" / "features.joblib"
 
     # Параметры обучения (общие для direction и amplitude)

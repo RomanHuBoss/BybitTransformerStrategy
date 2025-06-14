@@ -16,7 +16,6 @@ async def lifespan(_):
 
 app = FastAPI(lifespan=lifespan)
 
-# Чистый безопасный вызов CORS без всяких фабрик:
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

@@ -1,4 +1,5 @@
 import logging
+import asyncio
 from datetime import datetime, UTC
 
 from hybrid_predictor import HybridPredictor
@@ -34,12 +35,9 @@ class SnapshotInference:
 
 
 if __name__ == '__main__':
-    import asyncio
-
     logging.basicConfig(level=logging.INFO)
     engine = SnapshotInference()
 
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(engine.update_snapshot())
+    asyncio.run(engine.update_snapshot())
 
     print(engine.get_snapshot())

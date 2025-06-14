@@ -42,8 +42,15 @@ class HybridPredictor:
 
     def predict(self, df):
         features = self.feature_engineer.generate_features(df, fit=False)
-        X_input = features.iloc[-1:].values.astype(np.float32)
-        X_tensor = torch.tensor(X_input)
+
+        # Подготовка данных для Direction
+        window_size = CFG.train.direction_window_size
+        X_input = features.iloc[-window_size:].values.astype(np.float32)
+        X_tensor = torch.tensor(X_input).unsqueeze(0)
+
+        # Подготовка данных для Amplitude
+        X_flat_input = features.iloc[-1:].values.astype(np.float32)
+        X_flat_tensor = torch.tensor(X_flat_input)
 
         # Direction prediction
         with torch.no_grad():
@@ -55,7 +62,7 @@ class HybridPredictor:
 
         # Amplitude prediction (quantile head)
         with torch.no_grad():
-            up_p10_pred, up_p90_pred, down_p10_pred, down_p90_pred = self.amplitude_model(X_tensor)
+            up_p10_pred, up_p90_pred, down_p10_pred, down_p90_pred = self.amplitude_model(X_flat_tensor)
 
             up_p10_val = up_p10_pred.item()
             up_p90_val = up_p90_pred.item()

@@ -1,26 +1,21 @@
 import asyncio
 import logging
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from snapshot_inference import SnapshotInference
-from config import CFG
+import os
 
-# Продакшн логгирование на русском
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 snapshot_engine = SnapshotInference()
 
 @asynccontextmanager
-async def lifespan(_):
-    logging.info("Запуск стримингового инференса...")
-    task = asyncio.create_task(snapshot_loop())
+async def lifespan(app: FastAPI):
+    asyncio.create_task(streaming_loop())
+    logging.info("🚀 Запуск стримингового инференса...")
     yield
-    task.cancel()
-    logging.info("Инференс остановлен.")
 
 app = FastAPI(lifespan=lifespan)
 
@@ -32,26 +27,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-async def snapshot_loop():
-    while True:
-        try:
-            await snapshot_engine.update_snapshot()
-        except Exception as e:
-            logging.error(f"Ошибка при обновлении snapshot: {e}")
-        await asyncio.sleep(CFG.inference.update_interval)
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+static_dir = os.path.join(current_dir, "static")
+
+app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
 
 @app.get("/snapshot")
-async def get_snapshot():
-    logging.info("Запрос на получение актуального snapshot.")
-    return snapshot_engine.get_snapshot()
+async def get_snapshot(limit: int = 20):
+    items = list(snapshot_engine.snapshot.items())
+    filtered = dict(items[:limit])
+    return filtered
 
-@app.get("/force_update")
-async def force_update():
-    logging.info("Принудительное обновление snapshot.")
-    await snapshot_engine.update_snapshot()
-    return {"status": "обновлено"}
+async def streaming_loop():
+    while True:
+        await snapshot_engine.update_snapshot()
+        await asyncio.sleep(1)
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
 
 if __name__ == "__main__":
     import uvicorn
-    logging.info("Запуск сервера...")
-    uvicorn.run(app, host="0.0.0.0", port=CFG.inference.api_port)
+    uvicorn.run("index:app", host="0.0.0.0", port=8000, reload=True)

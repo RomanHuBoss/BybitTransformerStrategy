@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Quant ML Hybrid Signals (V4.0)</title>
+    <title>Quant ML Hybrid Signals (V5.0)</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -32,21 +32,44 @@
             text-align: center;
             margin-bottom: 20px;
         }
+        .button-container {
+            text-align: center;
+            margin-top: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            background: #3498db;
+            color: #fff;
+        }
     </style>
 </head>
 <body>
-    <h1 class="header">Quant ML V4.0 Hybrid Signals</h1>
+    <h1 class="header">Quant ML V5.0 Hybrid Signals</h1>
     <div class="grid" id="grid"></div>
+    <div class="button-container">
+        <button onclick="showMore()">Показать ещё</button>
+    </div>
 
     <script>
+        let limit = 20;
+
         async function loadSnapshot() {
             try {
-                const res = await fetch("/snapshot");
+                const res = await fetch(`/snapshot?limit=${limit}`);
                 const data = await res.json();
                 renderTiles(data);
             } catch (e) {
                 console.error("Ошибка загрузки:", e);
             }
+        }
+
+        function showMore() {
+            limit += 20;
+            loadSnapshot();
         }
 
         function renderTiles(snapshot) {
@@ -67,8 +90,7 @@
                 tile.innerHTML = `
                     <strong>${symbol}</strong><br>
                     Amp: ${amplitude}%<br>
-                    Conf: ${confidence}%
-                `;
+                    Conf: ${confidence}%`;
 
                 tile.onclick = () => {
                     alert(`${symbol}\n\nClass: ${signal.final_class}\nConfidence: ${confidence}%\nAmplitude: ${amplitude}%`);
@@ -79,7 +101,6 @@
         }
 
         loadSnapshot();
-        setInterval(loadSnapshot, 60_000); // Обновлять каждые 60 сек
     </script>
 </body>
 </html>

@@ -33,7 +33,7 @@ def get_validation_logits_and_labels():
         threshold=CFG.label_generation.direction_threshold
     )
     labels = generator.generate_labels(df)
-    labels_series = pd.Series(labels, index=df.index)
+    labels_series = pd.Series(labels, index=df.index[:-generator.shift])
 
     # Синхронизация индексов с метками
     df_feat = df_feat.merge(

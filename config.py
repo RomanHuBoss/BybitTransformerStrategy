@@ -53,7 +53,7 @@ class CFG:
     # Параметры label генерации
     class labels:
         lookahead = 20
-        rr_min = 2.5
+        rr_min = 2
         sl_min = 0.005
         sl_max = 0.02
         sl_step = 0.001
@@ -63,6 +63,14 @@ class CFG:
         direction_threshold = 0.005
         amplitude_shift = 20
         quantile_window = 30
+
+        # параметры под HitOrder
+        hit_order_shift = 20
+        hit_order_window = 30
+        hit_order_sl_min = 0.005  # 0.5% минимальный SL
+        hit_order_sl_max = 0.02  # 2% максимальный SL
+        hit_order_rr_min = 2.0  # минимальный RR: TP >= 2×SL
+        hit_order_rr_max = 6.0  # максимальный RR (чтобы учесть разные сценарии)
 
     # Режимы генерации признаков
     class feature_engineering:

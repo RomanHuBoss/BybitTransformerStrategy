@@ -34,6 +34,7 @@ if __name__ == "__main__":
     try:
         run_script("directional_label_generator.py")
         run_script("amplitude_label_generator.py")
+        run_script("hit_order_label_generator.py")
         validate_dataset()
         run_script("prepare_features.py")
         run_script("train_direction.py")

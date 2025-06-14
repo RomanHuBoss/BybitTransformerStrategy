@@ -20,6 +20,7 @@ class SnapshotInference:
 
         await asyncio.gather(*tasks)
 
+        # добавляем timestamp
         self.snapshot["timestamp"] = datetime.now(UTC).isoformat()
         logging.info(f"Снимок обновлён. Активов: {len(self.snapshot) - 1}")
 

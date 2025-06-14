@@ -2,33 +2,67 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-class CostSensitiveFocalLoss(nn.Module):
-    def __init__(self, alpha=None, gamma=2.0, label_smoothing=0.0):
-        """
-        Cost-Sensitive Focal Loss with class weights and optional per-class gamma.
 
-        :param alpha: Tensor of class weights (shape [num_classes])
-        :param gamma: Scalar or tensor per-class focusing parameter
-        :param label_smoothing: Label smoothing factor (default=0.0)
-        """
-        super().__init__()
+# === Directional Loss ===
+
+class CostSensitiveFocalLoss(nn.Module):
+    """
+    Классический focal loss с поддержкой cost-sensitive обучения.
+    """
+    def __init__(self, alpha=None, gamma=2.0, label_smoothing=0.0):
+        super(CostSensitiveFocalLoss, self).__init__()
         self.alpha = alpha
         self.gamma = gamma
         self.label_smoothing = label_smoothing
 
-    def forward(self, inputs, targets):
+    def forward(self, logits, targets):
         ce_loss = F.cross_entropy(
-            inputs, targets, reduction='none', weight=self.alpha, label_smoothing=self.label_smoothing
+            logits, targets,
+            weight=self.alpha,
+            label_smoothing=self.label_smoothing,
+            reduction='none'
         )
-        ce_loss = torch.nan_to_num(ce_loss, nan=0.0, posinf=1e6, neginf=-1e6)
 
-        pt = torch.exp(-ce_loss).clamp(min=1e-8, max=1.0)
-        if isinstance(self.gamma, torch.Tensor):
-            gamma_factor = self.gamma[targets]
-        else:
-            gamma_factor = self.gamma
-
-        focal_loss = ((1 - pt) ** gamma_factor) * ce_loss
-        focal_loss = torch.nan_to_num(focal_loss, nan=0.0, posinf=1e6, neginf=-1e6)
+        pt = torch.exp(-ce_loss)
+        focal_loss = ((1 - pt) ** self.gamma) * ce_loss
 
         return focal_loss.mean()
+
+
+# === Amplitude Loss ===
+
+class QuantileLoss(nn.Module):
+    """
+    Классический quantile loss для обучения p10 и p90.
+    """
+    def __init__(self, quantile):
+        super().__init__()
+        self.quantile = quantile
+
+    def forward(self, preds, target):
+        error = target - preds
+        return torch.max((self.quantile - 1) * error, self.quantile * error).mean()
+
+
+class AmplitudeLoss(nn.Module):
+    """
+    Итоговый лосс для амплитудной модели — суммируем quantile loss для всех 4 выходов.
+    """
+    def __init__(self):
+        super().__init__()
+        self.up_p10_loss = QuantileLoss(0.1)
+        self.up_p90_loss = QuantileLoss(0.9)
+        self.down_p10_loss = QuantileLoss(0.1)
+        self.down_p90_loss = QuantileLoss(0.9)
+
+    def forward(self, preds, targets):
+        up_p10_pred, up_p90_pred, down_p10_pred, down_p90_pred = preds
+        up_target, down_target = targets[:, 0:1], targets[:, 1:2]
+
+        loss = 0
+        loss += self.up_p10_loss(up_p10_pred, up_target)
+        loss += self.up_p90_loss(up_p90_pred, up_target)
+        loss += self.down_p10_loss(down_p10_pred, down_target)
+        loss += self.down_p90_loss(down_p90_pred, down_target)
+
+        return loss

@@ -30,6 +30,16 @@ class HybridPredictor:
         self.amplitude_up_scaler = joblib.load(CFG.paths.amplitude_target_scaler_path.with_name("amplitude_up_scaler.joblib"))
         self.amplitude_down_scaler = joblib.load(CFG.paths.amplitude_target_scaler_path.with_name("amplitude_down_scaler.joblib"))
 
+        self._validate_model_dimensions()
+
+    def _validate_model_dimensions(self):
+        feature_dim = len(self.feature_engineer.feature_columns)
+        assert self.direction_model.input_proj.in_features == feature_dim, (
+            f"DirectionalModel input_dim ({self.direction_model.input_proj.in_features}) != features ({feature_dim})")
+        assert self.amplitude_model.shared[0].in_features == feature_dim, (
+            f"AmplitudeModel input_dim ({self.amplitude_model.shared[0].in_features}) != features ({feature_dim})")
+        print("[HybridPredictor] Модели успешно валидированы по размерностям.")
+
     def predict(self, df):
         features = self.feature_engineer.generate_features(df, fit=False)
         X_input = features.iloc[-1:].values.astype(np.float32)

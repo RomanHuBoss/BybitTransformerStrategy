@@ -54,9 +54,9 @@ function render() {
     let count = 0;
     for (const [symbol, signal] of Object.entries(data)) {
         if (count >= limit) break;
-        const tp = signal.predicted_up_p90 * 100;
-        const sl = signal.predicted_down_p90 * 100;
-        const rr = sl > 0 ? signal.predicted_up_p90 / signal.predicted_down_p90 : 0;
+        const tp = signal.tp * 100;
+        const sl = signal.sl * 100;
+        const rr = sl > 0 ? tp / sl : 0;
 
         if (signal.predicted_amplitude < minAmp || rr < minRR || signal.final_confidence < minConf) continue;
 
@@ -72,15 +72,15 @@ function render() {
 
 function openModal(symbol, signal, tp, sl, rr) {
     const modal = document.getElementById("modal-content");
+    const hitOrderText = signal.hit_order === 0 ? "TP First" : (signal.hit_order === 1 ? "SL First" : "-");
+
     modal.innerHTML = `<h2>${symbol}</h2><table>
         <tr><td>Direction:</td><td>${classNames[signal.final_class]}</td></tr>
         <tr><td>Confidence:</td><td>${(signal.final_confidence*100).toFixed(1)}%</td></tr>
         <tr><td>Amplitude:</td><td>${(signal.predicted_amplitude*100).toFixed(2)}%</td></tr>
         <tr><td>Spread:</td><td>${(signal.amplitude_spread*100).toFixed(2)}%</td></tr>
-        <tr><td>TP:</td><td>${tp.toFixed(2)}%</td></tr>
-        <tr><td>SL:</td><td>${sl.toFixed(2)}%</td></tr>
         <tr><td>RR:</td><td>${rr.toFixed(2)}</td></tr>
-        <tr><td>HitOrder Prob:</td><td>${(signal.hit_order_prob*100).toFixed(1)}%</td></tr>
+        <tr><td>HitOrder:</td><td>${hitOrderText}</td></tr>
     </table>
     <div style="text-align:center; margin-top:15px;">
     <a href="https://www.bybit.com/trade/usdt/${symbol}" target="_blank" style="color:#3498db;font-size:16px;">Перейти на биржу</a>
@@ -100,7 +100,7 @@ function loadMore() {
     render();
 }
 
-const ws = new WebSocket("ws://localhost:8000/ws");
+const ws = new WebSocket("ws://" + location.host + "/ws");
 ws.onmessage = event => {
     data = JSON.parse(event.data);
     render();

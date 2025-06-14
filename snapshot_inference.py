@@ -15,7 +15,7 @@ class SnapshotInference:
         self.symbols_all = self.symbol_provider.get_bybit_symbols_list(limit=1000)
         self.max_symbols = 300
         self.snapshot = {}
-        self.semaphore = Semaphore(10)  # Ограничиваем параллелизм до 10 запросов одновременно
+        self.semaphore = Semaphore(10)
 
     async def run_loop(self):
         while True:
@@ -26,25 +26,26 @@ class SnapshotInference:
         symbols = self.symbols_all[:self.max_symbols]
         logging.info(f"Обновление снимка: {len(symbols)} активов")
 
+        self.snapshot = {}
         tasks = [self.process_symbol(symbol) for symbol in symbols]
-        results = await asyncio.gather(*tasks)
 
-        snapshot_temp = {symbol: result for symbol, result in results if result is not None}
-        self.snapshot = snapshot_temp
+        for future in asyncio.as_completed(tasks):
+            symbol, result = await future
+            if result is not None:
+                self.snapshot[symbol] = result
+
         logging.info(f"Собрано валидных сигналов: {len(self.snapshot)}")
 
     async def process_symbol(self, symbol):
         async with self.semaphore:
             try:
                 df = await self.get_recent_ohlcv(symbol)
-
                 if df is None or len(df) < 100:
                     logging.warning(f"Недостаточно свечей для {symbol}")
                     return (symbol, None)
 
                 result = self.predictor.predict(df)
                 return (symbol, result)
-
             except Exception as e:
                 logging.error(f"Ошибка обработки {symbol}: {e}")
                 return (symbol, None)

@@ -17,7 +17,7 @@ class HybridPredictor:
         model_cfg.input_dim = input_dim
 
         # Direction model
-        self.direction_model = DirectionalModel(model_config=model_cfg)
+        self.direction_model = DirectionalModel(input_size=input_dim)
         self.direction_model.load_state_dict(torch.load(CFG.paths.direction_model_path))
         self.direction_model.eval()
 
@@ -71,6 +71,8 @@ class HybridPredictor:
             # HitOrderClassifier
             hit_order_prob = self.hit_order_model(X_flat_tensor).item()
 
+        hit_order_class = int(hit_order_prob >= 0.5)
+
         return {
             "final_class": final_class,
             "final_confidence": confidence,
@@ -80,7 +82,8 @@ class HybridPredictor:
             "predicted_down_p90": float(down_p90),
             "predicted_amplitude": float(amplitude_pred),
             "amplitude_spread": float(amplitude_spread),
-            "hit_order_prob": float(hit_order_prob)
+            "hit_order_prob": float(hit_order_prob),
+            "hit_order": hit_order_class
         }
 
     @staticmethod

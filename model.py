@@ -31,19 +31,3 @@ class DirectionalModel(nn.Module):
         x = x[:, -1, :]
         x = self.output_head(x)
         return x
-
-
-# AmplitudeModel — регрессия амплитуды
-class AmplitudeModel(nn.Module):
-    def __init__(self, input_size):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(input_size, 256),
-            nn.ReLU(),
-            nn.Linear(256, 128),
-            nn.ReLU(),
-            nn.Linear(128, 1)
-        )
-
-    def forward(self, x):
-        return self.net(x)

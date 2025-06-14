@@ -10,21 +10,45 @@ import logging
 import os
 
 from feature_engineering import FeatureEngineer
-from model import AmplitudeModel
 from amplitude_label_generator import AmplitudeLabelGenerator
 from config import CFG
 
+# Полностью встроенная двухголовая модель
+class AmplitudeModel(nn.Module):
+    def __init__(self, input_size):
+        super().__init__()
+        self.shared = nn.Sequential(
+            nn.Linear(input_size, 512),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(512, 256),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(256, 128),
+            nn.ReLU()
+        )
+
+        self.up_head = nn.Linear(128, 1)
+        self.down_head = nn.Linear(128, 1)
+
+    def forward(self, x):
+        shared_out = self.shared(x)
+        up_out = self.up_head(shared_out)
+        down_out = self.down_head(shared_out)
+        return up_out, down_out
+
 
 class AmplitudeDataset(Dataset):
-    def __init__(self, X, y):
+    def __init__(self, X, y_up, y_down):
         self.X = torch.tensor(X, dtype=torch.float32)
-        self.y = torch.tensor(y, dtype=torch.float32).view(-1, 1)
+        self.y_up = torch.tensor(y_up, dtype=torch.float32).view(-1, 1)
+        self.y_down = torch.tensor(y_down, dtype=torch.float32).view(-1, 1)
 
     def __len__(self):
         return len(self.X)
 
     def __getitem__(self, idx):
-        return self.X[idx], self.y[idx]
+        return self.X[idx], self.y_up[idx], self.y_down[idx]
 
 
 class AmplitudeTrainer:
@@ -41,58 +65,64 @@ class AmplitudeTrainer:
 
         logging.info("Генерация амплитудных меток...")
         generator = AmplitudeLabelGenerator(CFG.labels.lookahead)
-        amplitude_targets = generator.generate_amplitude_labels(self.df)
+        up_targets, down_targets = generator.generate_amplitude_labels(self.df)
 
-        amplitude_targets_series = pd.Series(amplitude_targets, index=self.df.index)
-        self.df_feat = self.df_feat.merge(
-            amplitude_targets_series.rename("amplitude_target"),
-            left_index=True,
-            right_index=True,
-            how='inner'
-        )
+        targets_df = pd.DataFrame({
+            "up_target": up_targets,
+            "down_target": down_targets
+        }, index=self.df.index)
+
+        self.df_feat = self.df_feat.merge(targets_df, left_index=True, right_index=True, how="inner")
 
         if 'atr_long_pct' not in self.df_feat.columns:
             raise ValueError("ATR признака не найдено в feature engineering")
 
         atr = self.df_feat['atr_long_pct'].values
         close = self.df.loc[self.df_feat.index, 'close'].values
-        amplitude_targets = self.df_feat['amplitude_target'].values
 
-        # Защита от division by zero
-        valid_idx = (atr > 1e-8) & (~np.isnan(amplitude_targets))
+        valid_idx = (atr > 1e-8) & (~np.isnan(up_targets)) & (~np.isnan(down_targets))
         atr = atr[valid_idx]
         close = close[valid_idx]
-        amplitude_targets = amplitude_targets[valid_idx]
 
-        y_raw = amplitude_targets / (atr * close + 1e-8)
-        y_raw = np.clip(y_raw, -20, 20)
+        up_targets = self.df_feat['up_target'].values[valid_idx]
+        down_targets = self.df_feat['down_target'].values[valid_idx]
 
-        # Логарифмическая трансформация
-        y_norm = np.log1p(np.abs(y_raw)) * np.sign(y_raw)
+        y_up_raw = up_targets / (atr * close + 1e-8)
+        y_down_raw = down_targets / (atr * close + 1e-8)
+
+        y_up_norm = np.log1p(y_up_raw)
+        y_down_norm = np.log1p(y_down_raw)
 
         self.df_feat = self.df_feat.iloc[valid_idx]
-        self.df_feat['label'] = y_norm
+        self.df_feat['up_norm'] = y_up_norm
+        self.df_feat['down_norm'] = y_down_norm
 
-        self.X_train, self.X_val, self.y_train, self.y_val = train_test_split(
-            self.df_feat.drop(columns=['label', 'amplitude_target']),
-            self.df_feat['label'],
+        self.X_train, self.X_val, self.y_up_train, self.y_up_val, self.y_down_train, self.y_down_val = train_test_split(
+            self.df_feat.drop(columns=['up_norm', 'down_norm', 'up_target', 'down_target']),
+            self.df_feat['up_norm'],
+            self.df_feat['down_norm'],
             test_size=CFG.train.val_size,
             shuffle=False
         )
 
-        self.scaler_y = RobustScaler()
-        self.y_train_scaled = self.scaler_y.fit_transform(self.y_train.values.reshape(-1, 1))
-        self.y_val_scaled = self.scaler_y.transform(self.y_val.values.reshape(-1, 1))
+        self.scaler_up = RobustScaler()
+        self.scaler_down = RobustScaler()
 
-        os.makedirs(os.path.dirname(CFG.paths.amplitude_target_scaler_path), exist_ok=True)
-        joblib.dump(self.scaler_y, CFG.paths.amplitude_target_scaler_path)
+        self.y_up_train_scaled = self.scaler_up.fit_transform(self.y_up_train.values.reshape(-1, 1))
+        self.y_up_val_scaled = self.scaler_up.transform(self.y_up_val.values.reshape(-1, 1))
 
-        self.train_ds = AmplitudeDataset(self.X_train.values, self.y_train_scaled)
-        self.val_ds = AmplitudeDataset(self.X_val.values, self.y_val_scaled)
+        self.y_down_train_scaled = self.scaler_down.fit_transform(self.y_down_train.values.reshape(-1, 1))
+        self.y_down_val_scaled = self.scaler_down.transform(self.y_down_val.values.reshape(-1, 1))
+
+        joblib.dump(self.scaler_up, CFG.paths.amplitude_target_scaler_path.with_name("amplitude_up_scaler.joblib"))
+        joblib.dump(self.scaler_down, CFG.paths.amplitude_target_scaler_path.with_name("amplitude_down_scaler.joblib"))
+
+        self.train_ds = AmplitudeDataset(self.X_train.values, self.y_up_train_scaled, self.y_down_train_scaled)
+        self.val_ds = AmplitudeDataset(self.X_val.values, self.y_up_val_scaled, self.y_down_val_scaled)
 
         self.model = AmplitudeModel(input_size=self.X_train.shape[1])
         self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=CFG.train.lr)
-        self.criterion = nn.MSELoss()
+        self.criterion = nn.HuberLoss(delta=1.0)
 
     def train(self):
         best_loss = np.inf
@@ -104,19 +134,19 @@ class AmplitudeTrainer:
             self.model.train()
             total_loss = 0
 
-            for X_batch, y_batch in train_loader:
+            for X_batch, y_up_batch, y_down_batch in train_loader:
                 self.optimizer.zero_grad()
-                preds = self.model(X_batch)
-                loss = self.criterion(preds, y_batch)
+                pred_up, pred_down = self.model(X_batch)
+                loss_up = self.criterion(pred_up, y_up_batch)
+                loss_down = self.criterion(pred_down, y_down_batch)
+                loss = loss_up + loss_down
                 loss.backward()
                 self.optimizer.step()
                 total_loss += loss.item()
 
             val_loss = self.validate(val_loader)
 
-            logging.info(
-                f"Эпоха {epoch} | Train Loss: {total_loss/len(train_loader):.4f} | Val Loss: {val_loss:.4f}"
-            )
+            logging.info(f"Эпоха {epoch} | Train Loss: {total_loss/len(train_loader):.4f} | Val Loss: {val_loss:.4f}")
 
             if val_loss < best_loss:
                 best_loss = val_loss
@@ -128,9 +158,11 @@ class AmplitudeTrainer:
         total_loss = 0
 
         with torch.no_grad():
-            for X_batch, y_batch in val_loader:
-                preds = self.model(X_batch)
-                loss = self.criterion(preds, y_batch)
+            for X_batch, y_up_batch, y_down_batch in val_loader:
+                pred_up, pred_down = self.model(X_batch)
+                loss_up = self.criterion(pred_up, y_up_batch)
+                loss_down = self.criterion(pred_down, y_down_batch)
+                loss = loss_up + loss_down
                 total_loss += loss.item()
 
         return total_loss / len(val_loader)

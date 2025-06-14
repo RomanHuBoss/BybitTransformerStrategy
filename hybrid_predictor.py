@@ -73,12 +73,17 @@ class HybridPredictor:
 
         hit_order_class = int(hit_order_prob >= 0.5)
 
-        # --- Новый блок расчета TP, SL, RR ---
-        tp = up_p90
-        sl = down_p90
+        # === Корректная постобработка TP / SL / RR ===
+        tp = max(up_p90, 0.001)
+        sl_raw = max(down_p90, 0.001)
 
+        # Защита от нулевых и отрицательных SL:
+        min_sl_value = CFG.labels.sl_min
+        sl = max(sl_raw, min_sl_value)
+
+        # RR всегда ограничиваем адекватными границами:
         rr = tp / sl if sl > 0 else 0.0
-        rr = max(0.0, min(rr, 50.0))  # Ограничим RR разумным диапазоном
+        rr = max(0.0, min(rr, 50.0))
 
         return {
             "final_class": final_class,

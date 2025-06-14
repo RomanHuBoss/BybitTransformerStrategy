@@ -32,7 +32,6 @@ def get_validation_logits_and_labels():
         shift=CFG.label_generation.direction_shift,
         threshold=CFG.label_generation.direction_threshold
     )
-
     labels = generator.generate_labels(df)
     labels_series = pd.Series(labels, index=df.index)
 

@@ -21,6 +21,8 @@ class CFG:
         epochs = 10
         val_size = 0.1
         focal_gamma = 2.0
+        direction_window_size = 60
+        amplitude_window_size = 60
 
     # Параметры инференса
     class inference:
@@ -46,6 +48,11 @@ class CFG:
         sl_min = 0.005
         sl_max = 0.02
         sl_step = 0.001
+
+    class label_generation:
+        direction_shift = 20
+        direction_threshold = 0.001  # например 0.1% движения — подбирается под твою стратегию
+        amplitude_shift = 20
 
     # Режимы генерации признаков
     class feature_engineering:

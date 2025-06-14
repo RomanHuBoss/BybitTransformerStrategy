@@ -20,7 +20,7 @@ logging.basicConfig(
 class AmplitudeTrainer:
     def __init__(self):
         logging.info("Загрузка обучающих данных...")
-        self.df = pd.read_csv(CFG.paths.train_data_path)
+        self.df = pd.read_csv(CFG.paths.train_csv)
 
         logging.info("Загрузка scaler и списка признаков...")
         self.engineer = FeatureEngineer()

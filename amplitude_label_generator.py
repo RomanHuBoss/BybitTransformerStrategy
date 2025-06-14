@@ -1,31 +1,41 @@
-import numpy as np
+import logging
 import pandas as pd
+import numpy as np
+from config import CFG
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s"
+)
 
 class AmplitudeLabelGenerator:
-    """
-    Генератор раздельных амплитудных меток: вверх и вниз.
-    """
-    def __init__(self, lookahead: int):
-        self.lookahead = lookahead
+    def __init__(self, shift=CFG.label_generation.amplitude_shift):
+        self.shift = shift
 
-    def generate_amplitude_labels(self, df: pd.DataFrame):
-        close = df["close"].values
-        high = df["high"].values
-        low = df["low"].values
+    def generate_labels(self, df):
+        high_future = df['high'].shift(-self.shift)
+        low_future = df['low'].shift(-self.shift)
+        current_close = df['close']
 
-        N = len(close)
-        up_targets = np.full(N, np.nan)
-        down_targets = np.full(N, np.nan)
+        up_amplitude = (high_future - current_close) / current_close
+        down_amplitude = (current_close - low_future) / current_close
 
-        for i in range(N - self.lookahead):
-            entry_price = close[i]
-            high_future = high[i+1 : i+1+self.lookahead]
-            low_future = low[i+1 : i+1+self.lookahead]
+        up_amplitude = up_amplitude[:-self.shift]
+        down_amplitude = down_amplitude[:-self.shift]
 
-            up_move = np.max(high_future) - entry_price
-            down_move = entry_price - np.min(low_future)
+        return up_amplitude, down_amplitude
 
-            up_targets[i] = up_move / entry_price
-            down_targets[i] = down_move / entry_price
+if __name__ == "__main__":
+    logging.info("Запуск генератора меток Amplitude...")
 
-        return up_targets, down_targets
+    df = pd.read_csv(CFG.paths.train_csv)
+
+    generator = AmplitudeLabelGenerator()
+    up_ampl, down_ampl = generator.generate_labels(df)
+
+    df = df.iloc[:-generator.shift].copy()
+    df['amplitude_up'] = up_ampl
+    df['amplitude_down'] = down_ampl
+
+    df.to_csv(CFG.paths.train_csv, index=False)
+    logging.info("✅ Amplitude метки успешно сгенерированы и сохранены.")

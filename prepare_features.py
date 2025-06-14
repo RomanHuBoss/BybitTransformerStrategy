@@ -11,7 +11,7 @@ logging.basicConfig(
 
 def prepare_features():
     logging.info("Загрузка обучающих данных...")
-    df = pd.read_csv(CFG.paths.train_data_path)
+    df = pd.read_csv(CFG.paths.train_csv)
 
     logging.info("Генерация признаков и обучение scaler...")
     engineer = FeatureEngineer()

@@ -54,24 +54,27 @@ class HybridPredictor:
         final_class = np.argmax(probs)
         confidence = probs[0, final_class]
 
-        # Amplitude prediction (двухголовая модель)
+        # Amplitude prediction (quantile head)
         with torch.no_grad():
-            up_pred_norm, down_pred_norm = self.amplitude_model(X_tensor)
-            up_pred_norm = up_pred_norm.numpy()[0, 0]
-            down_pred_norm = down_pred_norm.numpy()[0, 0]
+            up_p10_pred, up_p90_pred, down_p10_pred, down_p90_pred = self.amplitude_model(X_tensor)
 
-            up_pred = self.amplitude_up_scaler.inverse_transform([[up_pred_norm]])[0, 0]
-            down_pred = self.amplitude_down_scaler.inverse_transform([[down_pred_norm]])[0, 0]
+            up_p10 = self.amplitude_up_scaler.inverse_transform([[up_p10_pred.numpy()[0, 0]]])[0, 0]
+            up_p90 = self.amplitude_up_scaler.inverse_transform([[up_p90_pred.numpy()[0, 0]]])[0, 0]
 
-            amplitude_pred = max(up_pred, down_pred)
+            down_p10 = self.amplitude_down_scaler.inverse_transform([[down_p10_pred.numpy()[0, 0]]])[0, 0]
+            down_p90 = self.amplitude_down_scaler.inverse_transform([[down_p90_pred.numpy()[0, 0]]])[0, 0]
+
+            amplitude_pred = max(up_p90, down_p90)
 
         hybrid_class = self._apply_thresholds(probs[0], amplitude_pred)
 
         return {
             "final_class": int(hybrid_class),
             "final_confidence": float(confidence),
-            "predicted_up": float(up_pred),
-            "predicted_down": float(down_pred),
+            "predicted_up_p10": float(up_p10),
+            "predicted_up_p90": float(up_p90),
+            "predicted_down_p10": float(down_p10),
+            "predicted_down_p90": float(down_p90),
             "predicted_amplitude": float(amplitude_pred)
         }
 
@@ -79,10 +82,10 @@ class HybridPredictor:
         prob_0, prob_1, prob_2 = probs
 
         if prob_0 > self.thresholds[0] and amplitude > CFG.hybrid.min_amplitude:
-            return 0  # Short
+            return 0
         if prob_2 > self.thresholds[2] and amplitude > CFG.hybrid.min_amplitude:
-            return 2  # Long
-        return 1  # No trade
+            return 2
+        return 1
 
     @staticmethod
     def softmax(x):

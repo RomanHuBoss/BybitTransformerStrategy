@@ -65,8 +65,9 @@ class HybridPredictor:
             down_p90 = self.amplitude_down_scaler.inverse_transform([[down_p90_pred.numpy()[0, 0]]])[0, 0]
 
             amplitude_pred = max(up_p90, down_p90)
+            amplitude_spread = max(up_p90 - up_p10, down_p90 - down_p10)
 
-        hybrid_class = self._apply_thresholds(probs[0], amplitude_pred)
+        hybrid_class = self._apply_thresholds(probs[0], amplitude_pred, amplitude_spread)
 
         return {
             "final_class": int(hybrid_class),
@@ -75,15 +76,19 @@ class HybridPredictor:
             "predicted_up_p90": float(up_p90),
             "predicted_down_p10": float(down_p10),
             "predicted_down_p90": float(down_p90),
-            "predicted_amplitude": float(amplitude_pred)
+            "predicted_amplitude": float(amplitude_pred),
+            "amplitude_spread": float(amplitude_spread)
         }
 
-    def _apply_thresholds(self, probs, amplitude):
+    def _apply_thresholds(self, probs, amplitude, spread):
         prob_0, prob_1, prob_2 = probs
 
-        if prob_0 > self.thresholds[0] and amplitude > CFG.hybrid.min_amplitude:
+        dynamic_threshold_0 = self.thresholds[0] + CFG.hybrid.dynamic_threshold_alpha * spread
+        dynamic_threshold_2 = self.thresholds[2] + CFG.hybrid.dynamic_threshold_alpha * spread
+
+        if prob_0 > dynamic_threshold_0 and amplitude > CFG.hybrid.min_amplitude and spread > CFG.hybrid.spread_threshold:
             return 0
-        if prob_2 > self.thresholds[2] and amplitude > CFG.hybrid.min_amplitude:
+        if prob_2 > dynamic_threshold_2 and amplitude > CFG.hybrid.min_amplitude and spread > CFG.hybrid.spread_threshold:
             return 2
         return 1
 

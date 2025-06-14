@@ -36,6 +36,8 @@ class CFG:
     # Параметры hybrid логики
     class hybrid:
         min_amplitude = 0.002  # минимальный предсказанный amplitude для фильтрации
+        spread_threshold = 0.05  # порог ширины интервала (spread) для входа
+        dynamic_threshold_alpha = 1.0  # коэффициент динамической корректировки threshold в зависимости от spread
 
     # Параметры label генерации
     class labels:
@@ -60,3 +62,4 @@ class CFG:
             "no-trade": 1,
             "long": 2
         }
+

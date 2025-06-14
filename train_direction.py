@@ -9,17 +9,14 @@ import logging
 import os
 
 from feature_engineering import FeatureEngineer
-from model import DirectionalModel
+from model import DirectionalModel  # <-- теперь строго централизованный импорт
 from losses import CostSensitiveFocalLoss
 from directional_label_generator import DirectionalLabelGenerator
 from dataset import SequenceDataset
 from config import CFG
 
 
-# ------------------------------
-# Конфигурация модели
-# ------------------------------
-
+# Конфигурация модели трансформера (локальная для direction)
 class ModelConfig:
     def __init__(self, input_dim):
         self.input_dim = input_dim
@@ -31,10 +28,6 @@ class ModelConfig:
         self.dropout = 0.1
         self.layer_norm_eps = 1e-5
 
-
-# ------------------------------
-# Тренировочный класс
-# ------------------------------
 
 class DirectionalTrainer:
     def __init__(self):
@@ -50,25 +43,32 @@ class DirectionalTrainer:
         os.makedirs(os.path.dirname(CFG.paths.scaler_path), exist_ok=True)
         joblib.dump(self.engineer.scaler, CFG.paths.scaler_path)
 
-        logging.info("Генерация меток SL/TP...")
+        logging.info("Генерация directional меток...")
         generator = DirectionalLabelGenerator(lookahead=CFG.labels.lookahead)
         labels = generator.generate_labels(self.df)
 
         labels_series = pd.Series(labels, index=self.df.index)
 
+        # Безопасная синхронизация по индексам
         self.df_feat = self.df_feat.merge(
             labels_series.rename("label"),
             left_index=True, right_index=True, how="inner"
         )
 
+        # Удаляем потенциальные строки с NaN
+        self.df_feat = self.df_feat.dropna(subset=["label"])
+
         self._log_class_balance()
 
         X = self.df_feat.drop(columns=['label']).values
-        y = self.df_feat['label'].values
+        y = self.df_feat['label'].astype(int).values
 
         self.X_train, self.X_val, self.y_train, self.y_val = train_test_split(
             X, y, test_size=CFG.train.val_size, shuffle=False
         )
+
+        assert len(self.X_train) == len(self.y_train), "Train: длины X и y не совпадают"
+        assert len(self.X_val) == len(self.y_val), "Val: длины X и y не совпадают"
 
         self.train_ds = SequenceDataset(self.X_train, self.y_train, self.window_size)
         self.val_ds = SequenceDataset(self.X_val, self.y_val, self.window_size)

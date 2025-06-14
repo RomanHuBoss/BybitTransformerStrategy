@@ -12,32 +12,9 @@ import os
 from feature_engineering import FeatureEngineer
 from amplitude_label_generator import AmplitudeLabelGenerator
 from config import CFG
+from model import AmplitudeModel
 
-# Полностью встроенная двухголовая модель
-class AmplitudeModel(nn.Module):
-    def __init__(self, input_size):
-        super().__init__()
-        self.shared = nn.Sequential(
-            nn.Linear(input_size, 512),
-            nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(512, 256),
-            nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(256, 128),
-            nn.ReLU()
-        )
-
-        self.up_head = nn.Linear(128, 1)
-        self.down_head = nn.Linear(128, 1)
-
-    def forward(self, x):
-        shared_out = self.shared(x)
-        up_out = self.up_head(shared_out)
-        down_out = self.down_head(shared_out)
-        return up_out, down_out
-
-
+# Датасет под двухголовую регрессию
 class AmplitudeDataset(Dataset):
     def __init__(self, X, y_up, y_down):
         self.X = torch.tensor(X, dtype=torch.float32)
@@ -72,7 +49,7 @@ class AmplitudeTrainer:
             "down_target": down_targets
         }, index=self.df.index)
 
-        # Синхронизация по индексам
+        # Синхронизация по индексам — безопасный merge
         self.df_feat = self.df_feat.merge(targets_df, left_index=True, right_index=True, how="inner")
 
         if 'atr_long_pct' not in self.df_feat.columns:

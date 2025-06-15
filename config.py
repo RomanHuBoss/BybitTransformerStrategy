@@ -27,12 +27,10 @@ class CFG:
     class train:
         lr = 3e-4
         batch_size = 512
-        epochs = 50
-        early_stopping_patience = 5  # например, 5 эпох без улучшений
+        epochs = 100
+        early_stopping_patience = 10
         val_size = 0.1
         focal_gamma = 2.0
-        direction_window_size = 60
-        amplitude_window_size = 60
 
     # Параметры инференса
     class inference:

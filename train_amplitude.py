@@ -12,11 +12,7 @@ from model import AmplitudeModel
 from losses import AmplitudeLoss
 from config import CFG
 
-# Настройка логирования
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 class AmplitudeTrainer:
     def __init__(self):
@@ -24,11 +20,9 @@ class AmplitudeTrainer:
 
         X = pd.read_csv(CFG.paths.train_features_csv).values
         y = np.load(CFG.paths.train_labels_amplitude)
-        logging.info(f"✅ Данные загружены: {X.shape[0]} примеров, {X.shape[1]} признаков")
 
-        min_len = min(len(X), len(y))
-        X = X[:min_len]
-        y = y[:min_len]
+        assert len(X) == len(y), f"Длины X ({len(X)}) и y ({len(y)}) не совпадают!"
+        logging.info(f"✅ Данные загружены: {len(X)} примеров, {X.shape[1]} признаков")
 
         self.engineer = FeatureEngineer()
         self.engineer.scaler = joblib.load(CFG.paths.scaler_path)
@@ -48,17 +42,12 @@ class AmplitudeTrainer:
 
         best_loss = float('inf')
         epochs_no_improve = 0
-        early_stop_patience = CFG.train.early_stopping_patience
+        patience = CFG.train.early_stopping_patience
 
         self.model.train()
         for epoch in range(CFG.train.epochs):
             total_loss = 0
-
-            # для MAE накопления
-            mae_up_p10 = []
-            mae_up_p90 = []
-            mae_down_p10 = []
-            mae_down_p90 = []
+            mae_up_p10, mae_up_p90, mae_down_p10, mae_down_p90 = [], [], [], []
 
             for X_batch, y_batch in self.dataloader:
                 self.optimizer.zero_grad()
@@ -68,7 +57,6 @@ class AmplitudeTrainer:
                 self.optimizer.step()
                 total_loss += loss.item()
 
-                # разложим головы
                 up_p10_pred, up_p90_pred, down_p10_pred, down_p90_pred = outputs
                 up_p10_target, up_p90_target, down_p10_target, down_p90_target = torch.chunk(y_batch, 4, dim=1)
 
@@ -78,15 +66,10 @@ class AmplitudeTrainer:
                 mae_down_p90.append(torch.mean(torch.abs(down_p90_pred - down_p90_target)).item())
 
             avg_loss = total_loss / len(self.dataloader)
-            mean_up_p10 = np.mean(mae_up_p10)
-            mean_up_p90 = np.mean(mae_up_p90)
-            mean_down_p10 = np.mean(mae_down_p10)
-            mean_down_p90 = np.mean(mae_down_p90)
-
             logging.info(
                 f"🧮 Эпоха {epoch + 1}: Train Loss={avg_loss:.6f} | "
-                f"MAE up_p10={mean_up_p10:.5f}, up_p90={mean_up_p90:.5f}, "
-                f"down_p10={mean_down_p10:.5f}, down_p90={mean_down_p90:.5f}"
+                f"MAE up_p10={np.mean(mae_up_p10):.5f}, up_p90={np.mean(mae_up_p90):.5f}, "
+                f"down_p10={np.mean(mae_down_p10):.5f}, down_p90={np.mean(mae_down_p90):.5f}"
             )
 
             if avg_loss < best_loss:
@@ -97,8 +80,8 @@ class AmplitudeTrainer:
             else:
                 epochs_no_improve += 1
 
-            if epochs_no_improve >= early_stop_patience:
-                logging.info(f"🛑 Ранняя остановка: {epochs_no_improve} эпох без улучшения.")
+            if epochs_no_improve >= patience:
+                logging.info("🛑 Ранняя остановка обучения.")
                 break
 
         logging.info("✅ Обучение завершено.")

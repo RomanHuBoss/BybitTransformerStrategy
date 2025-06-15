@@ -1,30 +1,51 @@
 import pandas as pd
 import numpy as np
 import joblib
+from sklearn.preprocessing import StandardScaler
 import logging
-from feature_engineering import FeatureEngineer
 from config import CFG
+from feature_engineering import FeatureEngineer
+import os
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
-def prepare_features():
-    logging.info("🚀 Старт генерации признаков...")
-    df = pd.read_csv(CFG.paths.train_csv)
-    logging.info(f"✅ Данные загружены: {df.shape[0]} строк")
+logging.info("🚀 Старт генерации признаков...")
 
-    engineer = FeatureEngineer()
-    df_features = engineer.generate_features(df, fit=True)
+# Загружаем основной датасет
+logging.info("Загрузка основного train_csv...")
+df = pd.read_csv(CFG.paths.train_csv)
+logging.info(f"✅ Данные загружены: {len(df)} строк")
 
-    joblib.dump(engineer.scaler, CFG.paths.scaler_path)
-    joblib.dump(engineer.feature_columns, CFG.paths.feature_columns_path)
-    logging.info("✅ Сохранён scaler и список признаков")
+# Генерация признаков
+engineer = FeatureEngineer()
 
-    df_features[engineer.feature_columns].to_csv(CFG.paths.train_features_csv, index=False)
-    logging.info(f"✅ Features сохранены: {len(engineer.feature_columns)} признаков")
+# Проверяем, есть ли сохранённый master feature set
+if os.path.exists(CFG.paths.feature_columns_path):
+    logging.info("📌 Найден сохранённый features.joblib — загружаем master feature set.")
+    master_features = joblib.load(CFG.paths.feature_columns_path)
+    features = engineer.generate_features(df, fit=False)
+    missing = set(master_features) - set(features.columns)
+    if missing:
+        raise ValueError(f"Отсутствуют признаки при повторной генерации: {missing}")
+    features = features[master_features]
+else:
+    logging.info("📌 Первый запуск — формируем master feature set.")
+    features = engineer.generate_features(df, fit=True)
+    master_features = engineer.feature_columns
+    joblib.dump(master_features, CFG.paths.feature_columns_path)
+    logging.info(f"✅ Сохранён master feature set: {len(master_features)} признаков")
 
-    np.save(CFG.paths.train_labels_direction, df['direction_class'].values)
-    np.save(CFG.paths.train_labels_amplitude, df[['amplitude_up', 'amplitude_down']].values)
-    logging.info("✅ Labels сохранены")
+# Стандартизация
+scaler = StandardScaler()
+scaled_features = scaler.fit_transform(features[master_features])
+joblib.dump(scaler, CFG.paths.scaler_path)
+logging.info("✅ Сохранён scaler")
 
-if __name__ == "__main__":
-    prepare_features()
+# Сохраняем стандартизированные фичи
+pd.DataFrame(scaled_features, columns=master_features).to_csv(CFG.paths.train_features_csv, index=False)
+logging.info("✅ Сохранён train_features.csv")
+
+# Проверка консистентности
+assert scaled_features.shape[1] == len(master_features), "Feature size mismatch после стандартизации"
+
+logging.info("🎯 Полная генерация признаков успешно завершена.")

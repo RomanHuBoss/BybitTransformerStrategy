@@ -8,12 +8,21 @@ from ta.volatility import AverageTrueRange
 from ta.momentum import StochasticOscillator
 from config import CFG
 import logging
+import os
 
 
 class FeatureEngineer:
     def __init__(self):
-        self.scaler = None
         self.feature_columns = None
+        self.scaler = None
+
+        # Попробуем сразу загрузить признаки из файла, если он существует
+        if os.path.exists(CFG.paths.feature_columns_path):
+            self.feature_columns = joblib.load(CFG.paths.feature_columns_path)
+
+        # Загружаем scaler, если есть
+        if os.path.exists(CFG.paths.scaler_path):
+            self.scaler = joblib.load(CFG.paths.scaler_path)
 
     def _adjust(self, base_window):
         return max(2, int(base_window * CFG.assets.timeframe / 30))

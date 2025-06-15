@@ -28,7 +28,7 @@ class CFG:
         lr = 3e-4
         batch_size = 512
         epochs = 50
-        early_stopping_patience = 5  # например, 30 эпох без улучшений
+        early_stopping_patience = 5  # например, 5 эпох без улучшений
         val_size = 0.1
         focal_gamma = 2.0
         direction_window_size = 60

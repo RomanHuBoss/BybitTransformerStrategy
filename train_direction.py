@@ -5,7 +5,7 @@ import logging
 import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader, random_split
-from sklearn.metrics import accuracy_score, balanced_accuracy_score, f1_score, confusion_matrix
+from sklearn.metrics import accuracy_score, balanced_accuracy_score, f1_score
 
 from feature_engineering import FeatureEngineer
 from dataset import SequenceDataset
@@ -15,22 +15,14 @@ from config import CFG
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
-
 class DirectionalTrainer:
     def __init__(self):
         logging.info("🚀 Начало обучения Direction модели")
         X = pd.read_csv(CFG.paths.train_features_csv).values
         y = np.load(CFG.paths.train_labels_direction)
 
-        # Безопасная синхронизация длин X и y
-        min_len = min(len(X), len(y))
-        X = X[:min_len]
-        y = y[:min_len]
-
-        logging.info(f"✅ После синхронизации: признаки: {X.shape}, метки: {y.shape}")
-
-        self._val_preds = []
-        self._val_targets = []
+        assert len(X) == len(y), f"Длины X ({len(X)}) и y ({len(y)}) не совпадают!"
+        logging.info(f"✅ Данные загружены: {len(X)} примеров, {X.shape[1]} признаков")
 
         self.engineer = FeatureEngineer()
         self.engineer.scaler = joblib.load(CFG.paths.scaler_path)
@@ -54,7 +46,7 @@ class DirectionalTrainer:
     def train(self):
         best_val_loss = float('inf')
         epochs_no_improve = 0
-        early_stop_patience = CFG.train.early_stopping_patience  # читаем из конфига
+        patience = CFG.train.early_stopping_patience
 
         for epoch in range(CFG.train.epochs):
             self.model.train()
@@ -68,7 +60,6 @@ class DirectionalTrainer:
                 total_loss += loss.item()
 
             avg_loss = total_loss / len(self.train_loader)
-
             val_loss, acc, bal_acc, macro_f1 = self.validate()
 
             logging.info(f"🧮 Эпоха {epoch + 1}: Train Loss {avg_loss:.6f}, Val Loss {val_loss:.6f}, "
@@ -82,10 +73,7 @@ class DirectionalTrainer:
             else:
                 epochs_no_improve += 1
 
-            if (epoch + 1) % 3 == 0:
-                self.log_confusion_matrix()
-
-            if epochs_no_improve >= early_stop_patience:
+            if epochs_no_improve >= patience:
                 logging.info(f"🛑 Ранняя остановка: {epochs_no_improve} эпох без улучшения.")
                 break
 
@@ -110,16 +98,7 @@ class DirectionalTrainer:
         acc = accuracy_score(all_targets, all_preds)
         bal_acc = balanced_accuracy_score(all_targets, all_preds)
         macro_f1 = f1_score(all_targets, all_preds, average='macro')
-
-        self._val_preds = all_preds
-        self._val_targets = all_targets
-
         return avg_loss, acc, bal_acc, macro_f1
-
-    def log_confusion_matrix(self):
-        cm = confusion_matrix(self._val_targets, self._val_preds)
-        logging.info("Confusion Matrix:\n" + str(cm))
-
 
 if __name__ == '__main__':
     trainer = DirectionalTrainer()

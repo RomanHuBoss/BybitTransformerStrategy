@@ -61,7 +61,7 @@ class CFG:
 
     class label_generation:
         direction_shift = 20
-        direction_threshold = 0.005
+        direction_threshold = 0.015
         amplitude_shift = 20
         quantile_window = 30
 

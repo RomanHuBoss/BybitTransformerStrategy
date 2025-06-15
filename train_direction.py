@@ -6,6 +6,8 @@ import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader, random_split
 from sklearn.metrics import accuracy_score, balanced_accuracy_score, f1_score
+from sklearn.utils.class_weight import compute_class_weight
+from collections import Counter
 
 from feature_engineering import FeatureEngineer
 from dataset import SequenceDataset
@@ -24,6 +26,12 @@ class DirectionalTrainer:
         assert len(X) == len(y), f"Длины X ({len(X)}) и y ({len(y)}) не совпадают!"
         logging.info(f"✅ Данные загружены: {len(X)} примеров, {X.shape[1]} признаков")
 
+        # Новое: логируем распределение классов
+        class_counts = Counter(y)
+        total_samples = len(y)
+        for label, count in class_counts.items():
+            logging.info(f"Класс {label}: {count} примеров ({count/total_samples:.2%})")
+
         self.engineer = FeatureEngineer()
         self.engineer.scaler = joblib.load(CFG.paths.scaler_path)
         self.engineer.feature_columns = joblib.load(CFG.paths.feature_columns_path)
@@ -40,7 +48,15 @@ class DirectionalTrainer:
         model_cfg.input_dim = len(self.engineer.feature_columns)
         self.model = DirectionalModel(model_cfg)
 
-        self.criterion = CostSensitiveFocalLoss(alpha=None, gamma=2.0, label_smoothing=0.0)
+        # Балансировка классов
+        class_weights = compute_class_weight(
+            class_weight='balanced',
+            classes=np.unique(y),
+            y=y
+        )
+        logging.info(f"Вычисленные веса классов: {class_weights}")
+
+        self.criterion = CostSensitiveFocalLoss(alpha=torch.tensor(class_weights, dtype=torch.float32), gamma=2.0, label_smoothing=0.0)
         self.optimizer = optim.Adam(self.model.parameters(), lr=CFG.train.lr)
 
     def train(self):

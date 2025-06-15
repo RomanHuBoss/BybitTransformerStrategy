@@ -19,8 +19,14 @@ def load_train_labels_amplitude():
     return np.load(CFG.paths.train_labels_amplitude)
 
 def load_train_labels_hitorder():
-    """Загрузка меток для HitOrder модели"""
-    return np.load(CFG.paths.train_labels_hitorder)
+    """
+    Загрузка меток для HitOrder модели.
+    Возвращаем отдельно параметры сделки и таргет (hit).
+    """
+    data = np.load(CFG.paths.train_labels_hitorder)
+    sl_tp = data[:, 1:3]   # [sl_relative, tp_relative]
+    hit = data[:, 3]       # binary target
+    return sl_tp, hit
 
 # === PyTorch Dataset для Direction модели (последовательности) ===
 
@@ -41,7 +47,7 @@ class SequenceDataset(Dataset):
         y_label = self.y[idx + self.window_size - 1]
         return torch.tensor(X_seq, dtype=torch.float32), torch.tensor(y_label, dtype=torch.long)
 
-# === PyTorch Dataset для Amplitude модели (табличные данные) ===
+# === PyTorch Dataset для Amplitude модели (регрессия) ===
 
 class AmplitudeDataset(Dataset):
     """
@@ -57,18 +63,20 @@ class AmplitudeDataset(Dataset):
     def __getitem__(self, idx):
         return self.X[idx], self.y[idx]
 
-# === PyTorch Dataset для HitOrder модели (бинарная классификация) ===
+# === Новый PyTorch Dataset для HitOrder модели (с доп. фичами SL/TP) ===
 
 class HitOrderDataset(Dataset):
     """
-    Датасет для HitOrder модели (бинарная классификация)
+    Датасет для HitOrder модели (табличные фичи + sl/tp параметры)
     """
-    def __init__(self, X, y):
+    def __init__(self, X, sl_tp, hit):
         self.X = torch.tensor(X, dtype=torch.float32)
-        self.y = torch.tensor(y, dtype=torch.float32)
+        self.sl_tp = torch.tensor(sl_tp, dtype=torch.float32)  # (sl_relative, tp_relative)
+        self.y = torch.tensor(hit, dtype=torch.float32)
 
     def __len__(self):
         return len(self.X)
 
     def __getitem__(self, idx):
-        return self.X[idx], self.y[idx]
+        features_full = torch.cat([self.X[idx], self.sl_tp[idx]], dim=0)
+        return features_full, self.y[idx]

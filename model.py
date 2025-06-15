@@ -81,6 +81,10 @@ class AmplitudeModel(nn.Module):
         down_p90 = self.down_p90_head(shared_out) * self.scale_down
         return up_p10, up_p90, down_p10, down_p90
 
+# ======================================
+# HitOrderClassifier с параметрами сделки
+# ======================================
+
 class HitOrderClassifier(nn.Module):
     def __init__(self, input_size):
         super().__init__()
@@ -94,8 +98,7 @@ class HitOrderClassifier(nn.Module):
             nn.Dropout(0.3),
             nn.Linear(256, 64),
             nn.ReLU(),
-            nn.Linear(64, 1),
-            nn.Sigmoid()
+            nn.Linear(64, 1)  # выход без Sigmoid — работаем с логитами
         )
 
     def forward(self, x):

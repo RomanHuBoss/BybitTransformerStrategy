@@ -86,60 +86,60 @@ labels_direction = labels_direction[CFG.feature_engineering.window_size : CFG.fe
 assert len(features) == len(labels_amplitude) == len(labels_direction), "Рассинхрон после Amplitude!"
 logging.info(f"✅ Amplitude метки: {len(labels_amplitude)}")
 
-# 5️⃣ HitOrder метки (direction-aware режим)
-logging.info("Генерация HitOrder меток...")
+# 5️⃣ HitOrder метки (стабильная генерация с фиксированной сеткой)
+logging.info("Генерация HitOrder меток (сеточная генерация)...")
 
+# Берем параметры из конфига
 sl_min = CFG.label_generation.hit_order_sl_min
 sl_max = CFG.label_generation.hit_order_sl_max
-rr_min = CFG.label_generation.hit_order_rr_min
+rr_min = 1.5  # как ты просил
 rr_max = CFG.label_generation.hit_order_rr_max
+
+# Строим сетку значений SL и RR
+sl_grid = np.arange(sl_min, sl_max + 1e-6, 0.005)
+rr_grid = np.arange(rr_min, rr_max + 1e-6, 0.5)
 
 hit_labels = []
 
 for idx in range(len(df_clean) - CFG.labels.lookahead):
     win = df_clean.iloc[idx : idx + CFG.labels.lookahead]
     close = df_clean.iloc[idx]['close']
-
-    # Берем направление из уже рассчитанных Direction меток
     direction = labels_direction[idx]
 
-    # Пропускаем no-trade
     if direction == 1:
-        continue
+        continue  # no-trade пропускаем
 
-    sl_relative = np.random.uniform(sl_min, sl_max)
-    rr = np.random.uniform(rr_min, rr_max)
-    tp_relative = sl_relative * rr
+    for sl_relative in sl_grid:
+        for rr in rr_grid:
+            tp_relative = sl_relative * rr
+            hit = 0
 
-    hit = 0
+            if direction == 2:  # long
+                sl_level = close * (1 - sl_relative)
+                tp_level = close * (1 + tp_relative)
+                for _, row in win.iterrows():
+                    if row['high'] >= tp_level:
+                        hit = 1
+                        break
+                    elif row['low'] <= sl_level:
+                        hit = 0
+                        break
 
-    if direction == 2:  # Long сценарий
-        sl_level = close * (1 - sl_relative)
-        tp_level = close * (1 + tp_relative)
+            elif direction == 0:  # short
+                sl_level = close * (1 + sl_relative)
+                tp_level = close * (1 - tp_relative)
+                for _, row in win.iterrows():
+                    if row['low'] <= tp_level:
+                        hit = 1
+                        break
+                    elif row['high'] >= sl_level:
+                        hit = 0
+                        break
 
-        for _, row in win.iterrows():
-            if row['high'] >= tp_level:
-                hit = 1
-                break
-            elif row['low'] <= sl_level:
-                hit = 0
-                break
-
-    elif direction == 0:  # Short сценарий
-        sl_level = close * (1 + sl_relative)
-        tp_level = close * (1 - tp_relative)
-
-        for _, row in win.iterrows():
-            if row['low'] <= tp_level:
-                hit = 1
-                break
-            elif row['high'] >= sl_level:
-                hit = 0
-                break
-
-    hit_labels.append([direction, sl_relative, tp_relative, hit])
+            hit_labels.append([direction, sl_relative, tp_relative, hit])
 
 labels_hitorder = np.array(hit_labels)
+
 
 # Финальная синхронизация
 final_len = len(labels_hitorder)

@@ -5,7 +5,7 @@ class CFG:
     # Пути к данным и моделям
     class paths:
         base = Path("./")
-        train_csv = base / "historical_data" / "BTCUSDT" / "30m" / "monthly" / "combined_csv.csv"
+        train_csv = base / "historical_data" / "LEARN" / "combined_csv.csv"
 
         # новые файлы:
         train_features_csv = base / "artifacts" / "model_30m" / "train_features.csv"
@@ -27,8 +27,8 @@ class CFG:
     class train:
         lr = 3e-4
         batch_size = 512
-        epochs = 100
-        early_stopping_patience = 10
+        epochs = 500
+        early_stopping_patience = 100
         val_size = 0.1
         focal_gamma = 2.0
 

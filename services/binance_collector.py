@@ -97,7 +97,7 @@ if __name__ == "__main__":
     BASE_URL = "https://data.binance.vision/data/futures/um"  # Замените на реальный URL
     PERIOD = "monthly" # daily or monthly
     CURRENCY_PAIR = "BTCUSDT"
-    TIMEFRAME = "15m"
+    TIMEFRAME = "30m"
     START_YEAR = 2017
     START_MONTH = 1
     START_DAY = 1

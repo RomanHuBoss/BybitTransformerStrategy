@@ -2,7 +2,7 @@ import os
 import pandas as pd
 
 # Укажите путь к папке с CSV-файлами
-folder_path = os.path.join('..', 'historical_data', 'BTCUSDT', '30m', 'monthly')  # Замените на ваш путь
+folder_path = os.path.join('..', 'historical_data', 'ETHUSDT', '30m', 'monthly')  # Замените на ваш путь
 
 # Получаем список всех CSV-файлов в папке
 csv_files = [file for file in os.listdir(folder_path) if file.endswith('.csv')]

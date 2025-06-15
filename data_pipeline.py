@@ -110,9 +110,6 @@ for idx in range(len(df_clean) - CFG.labels.lookahead):
     close = df_clean.iloc[idx]['close']
     direction = labels_direction[idx]
 
-    if direction == 1:
-        continue
-
     for sl_relative, tp_relative in profile_grid:
         hit = 0
 
@@ -122,21 +119,31 @@ for idx in range(len(df_clean) - CFG.labels.lookahead):
             tp_hit = highs >= tp_level
             sl_hit = lows <= sl_level
 
+            for tp_flag, sl_flag in zip(tp_hit, sl_hit):
+                if tp_flag:
+                    hit = 1
+                    break
+                elif sl_flag:
+                    hit = 0
+                    break
         elif direction == 0:  # short
             sl_level = close * (1 + sl_relative)
             tp_level = close * (1 - tp_relative)
             tp_hit = lows <= tp_level
             sl_hit = highs >= sl_level
 
-        for tp_flag, sl_flag in zip(tp_hit, sl_hit):
-            if tp_flag:
-                hit = 1
-                break
-            elif sl_flag:
-                hit = 0
-                break
+            for tp_flag, sl_flag in zip(tp_hit, sl_hit):
+                if tp_flag:
+                    hit = 1
+                    break
+                elif sl_flag:
+                    hit = 0
+                    break
+        else:
+            hit = 0
 
         hit_labels.append([direction, sl_relative, tp_relative, hit])
+
 
 labels_hitorder = np.array(hit_labels)
 

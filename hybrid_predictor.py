@@ -13,7 +13,7 @@ class HybridPredictor:
         self.feature_engineer.feature_columns = joblib.load(CFG.paths.feature_columns_path)
 
         input_dim = len(self.feature_engineer.feature_columns)
-        model_cfg = CFG.DirectionModelConfig()
+        model_cfg = CFG.ModelConfig()
         model_cfg.input_dim = input_dim
 
         self.direction_model = DirectionalModel(model_cfg)

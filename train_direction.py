@@ -37,7 +37,7 @@ class DirectionalTrainer:
         self.engineer.scaler = joblib.load(CFG.paths.scaler_path)
         self.engineer.feature_columns = joblib.load(CFG.paths.feature_columns_path)
 
-        full_dataset = SequenceDataset(X, y, CFG.train.direction_window_size)
+        full_dataset = SequenceDataset(X, y, CFG.labels.lookahead)
         val_size = int(len(full_dataset) * CFG.train.val_size)
         train_size = len(full_dataset) - val_size
         self.train_dataset, self.val_dataset = random_split(full_dataset, [train_size, val_size])
@@ -45,7 +45,7 @@ class DirectionalTrainer:
         self.train_loader = DataLoader(self.train_dataset, batch_size=CFG.train.batch_size, shuffle=True)
         self.val_loader = DataLoader(self.val_dataset, batch_size=CFG.train.batch_size, shuffle=False)
 
-        model_cfg = CFG.DirectionModelConfig()
+        model_cfg = CFG.ModelConfig()
         model_cfg.input_dim = len(self.engineer.feature_columns)
         self.model = DirectionalModel(model_cfg)
 

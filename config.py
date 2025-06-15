@@ -51,7 +51,7 @@ class CFG:
 
     # Параметры label генерации
     class labels:
-        lookahead = 20
+        lookahead = 10
         rr_min = 2
         sl_min = 0.005
         sl_max = 0.02
@@ -73,7 +73,7 @@ class CFG:
     # Режимы генерации признаков
     class feature_engineering:
         default_shift = 1  # смещение меток
-        window_size = 60  # окно
+        window_size = 30  # окно
 
     # Параметры сохранения генератора
     class snapshot:
@@ -90,7 +90,7 @@ class CFG:
         log_eps = 1e-6
         loss_weights = [0.4, 0.1, 0.4, 0.1]
 
-    class DirectionModelConfig:
+    class ModelConfig:
         input_dim = None  # обязательно задаётся позже (динамически)
         hidden_dim = 128
         n_layers = 2

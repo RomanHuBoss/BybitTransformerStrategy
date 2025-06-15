@@ -24,25 +24,24 @@ logging.info(f"✅ Сгенерированы признаки: {features.shape}
 df_clean = df_raw.loc[features.index].reset_index(drop=True)
 features.reset_index(drop=True, inplace=True)
 
-# 3️⃣ Direction метки (range-based, строго от текущей свечи)
+# 3️⃣ Direction метки (range-based)
 logging.info("Генерация Direction меток (range-based)...")
-
 threshold = CFG.label_generation.direction_threshold
-
 direction_labels = []
+
 for idx in range(len(df_clean) - CFG.labels.lookahead):
     current_close = df_clean.iloc[idx]['close']
-    future_window = df_clean.iloc[idx : idx + CFG.labels.lookahead]
+    future_window = df_clean.iloc[idx:idx + CFG.labels.lookahead]
 
     max_return = (future_window['high'].max() - current_close) / current_close
     min_return = (future_window['low'].min() - current_close) / current_close
 
     if max_return > threshold:
-        label = 2  # long
+        label = 2
     elif min_return < -threshold:
-        label = 0  # short
+        label = 0
     else:
-        label = 1  # no-trade
+        label = 1
 
     direction_labels.append(label)
 
@@ -55,17 +54,16 @@ df_clean = df_clean.iloc[:valid_length].reset_index(drop=True)
 assert len(features) == len(labels_direction), "Рассинхрон после Direction!"
 logging.info(f"✅ Direction метки (range-based): {len(labels_direction)}")
 
-# 4️⃣ Amplitude метки (60 назад и 20 вперёд)
+# 4️⃣ Amplitude метки
 logging.info("Генерация Amplitude меток...")
-
 min_sl = CFG.label_generation.amplitude_min_sl
 max_sl = CFG.label_generation.amplitude_max_sl
 max_tp = CFG.label_generation.amplitude_max_tp
-
 amp_labels = []
+
 for idx in range(CFG.feature_engineering.window_size, len(df_clean) - CFG.labels.lookahead):
     current_close = df_clean.iloc[idx]['close']
-    future_win = df_clean.iloc[idx : idx + CFG.labels.lookahead]
+    future_win = df_clean.iloc[idx:idx + CFG.labels.lookahead]
 
     up_ampl = (future_win['high'] - current_close) / current_close
     down_ampl = (current_close - future_win['low']) / current_close
@@ -79,67 +77,68 @@ for idx in range(CFG.feature_engineering.window_size, len(df_clean) - CFG.labels
 
 labels_amplitude = np.array(amp_labels)
 
-features = features.iloc[CFG.feature_engineering.window_size : CFG.feature_engineering.window_size + len(labels_amplitude)].reset_index(drop=True)
-df_clean = df_clean.iloc[CFG.feature_engineering.window_size : CFG.feature_engineering.window_size + len(labels_amplitude)].reset_index(drop=True)
-labels_direction = labels_direction[CFG.feature_engineering.window_size : CFG.feature_engineering.window_size + len(labels_amplitude)]
+features = features.iloc[CFG.feature_engineering.window_size:CFG.feature_engineering.window_size + len(labels_amplitude)].reset_index(drop=True)
+df_clean = df_clean.iloc[CFG.feature_engineering.window_size:CFG.feature_engineering.window_size + len(labels_amplitude)].reset_index(drop=True)
+labels_direction = labels_direction[CFG.feature_engineering.window_size:CFG.feature_engineering.window_size + len(labels_amplitude)]
 
 assert len(features) == len(labels_amplitude) == len(labels_direction), "Рассинхрон после Amplitude!"
 logging.info(f"✅ Amplitude метки: {len(labels_amplitude)}")
 
-# 5️⃣ HitOrder метки (стабильная генерация с фиксированной сеткой)
-logging.info("Генерация HitOrder меток (сеточная генерация)...")
+# 5️⃣ HitOrder метки (полностью оптимизированная сеточная генерация)
+logging.info("Генерация HitOrder меток (ускоренная сетка)...")
 
-# Берем параметры из конфига
 sl_min = CFG.label_generation.hit_order_sl_min
 sl_max = CFG.label_generation.hit_order_sl_max
-rr_min = 1.5  # как ты просил
-rr_max = CFG.label_generation.hit_order_rr_max
+sl_step = CFG.label_generation.hit_order_sl_step
 
-# Строим сетку значений SL и RR
-sl_grid = np.arange(sl_min, sl_max + 1e-6, 0.005)
-rr_grid = np.arange(rr_min, rr_max + 1e-6, 0.5)
+rr_min = CFG.label_generation.hit_order_rr_min
+rr_max = CFG.label_generation.hit_order_rr_max
+rr_step = CFG.label_generation.hit_order_rr_step
+
+sl_grid = np.arange(sl_min, sl_max + 1e-6, sl_step)
+rr_grid = np.arange(rr_min, rr_max + 1e-6, rr_step)
+
+profile_grid = [(sl, sl * rr) for sl in sl_grid for rr in rr_grid]
+logging.info(f"Сгенерировано профилей: {len(profile_grid)}")
 
 hit_labels = []
 
 for idx in range(len(df_clean) - CFG.labels.lookahead):
-    win = df_clean.iloc[idx : idx + CFG.labels.lookahead]
+    win = df_clean.iloc[idx:idx + CFG.labels.lookahead]
+    highs = win['high'].values
+    lows = win['low'].values
     close = df_clean.iloc[idx]['close']
     direction = labels_direction[idx]
 
     if direction == 1:
-        continue  # no-trade пропускаем
+        continue
 
-    for sl_relative in sl_grid:
-        for rr in rr_grid:
-            tp_relative = sl_relative * rr
-            hit = 0
+    for sl_relative, tp_relative in profile_grid:
+        hit = 0
 
-            if direction == 2:  # long
-                sl_level = close * (1 - sl_relative)
-                tp_level = close * (1 + tp_relative)
-                for _, row in win.iterrows():
-                    if row['high'] >= tp_level:
-                        hit = 1
-                        break
-                    elif row['low'] <= sl_level:
-                        hit = 0
-                        break
+        if direction == 2:  # long
+            sl_level = close * (1 - sl_relative)
+            tp_level = close * (1 + tp_relative)
+            tp_hit = highs >= tp_level
+            sl_hit = lows <= sl_level
 
-            elif direction == 0:  # short
-                sl_level = close * (1 + sl_relative)
-                tp_level = close * (1 - tp_relative)
-                for _, row in win.iterrows():
-                    if row['low'] <= tp_level:
-                        hit = 1
-                        break
-                    elif row['high'] >= sl_level:
-                        hit = 0
-                        break
+        elif direction == 0:  # short
+            sl_level = close * (1 + sl_relative)
+            tp_level = close * (1 - tp_relative)
+            tp_hit = lows <= tp_level
+            sl_hit = highs >= sl_level
 
-            hit_labels.append([direction, sl_relative, tp_relative, hit])
+        for tp_flag, sl_flag in zip(tp_hit, sl_hit):
+            if tp_flag:
+                hit = 1
+                break
+            elif sl_flag:
+                hit = 0
+                break
+
+        hit_labels.append([direction, sl_relative, tp_relative, hit])
 
 labels_hitorder = np.array(hit_labels)
-
 
 # Финальная синхронизация
 final_len = len(labels_hitorder)
@@ -156,4 +155,4 @@ np.save(CFG.paths.train_labels_amplitude, labels_amplitude)
 np.save(CFG.paths.train_labels_hitorder, labels_hitorder)
 
 logging.info(f"✅ Финально сохранено: {len(features)} строк")
-logging.info("🎯 Полный боевой FINISHED pipeline собран.")
+logging.info("🎯 Полный продакшн data_pipeline собран.")

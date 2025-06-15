@@ -67,8 +67,12 @@ class CFG:
         # параметры под HitOrder
         hit_order_sl_min = 0.005  # 0.5% минимальный SL
         hit_order_sl_max = 0.02  # 2% максимальный SL
-        hit_order_rr_min = 2.0  # минимальный RR: TP >= 2×SL
-        hit_order_rr_max = 6.0  # максимальный RR (чтобы учесть разные сценарии)
+        hit_order_rr_min = 2.0  # минимальный RR
+        hit_order_rr_max = 6.0  # максимальный RR
+
+        # новые параметры сетки (добавляем сюда)
+        hit_order_sl_step = 0.005
+        hit_order_rr_step = 0.5
 
     # Режимы генерации признаков
     class feature_engineering:

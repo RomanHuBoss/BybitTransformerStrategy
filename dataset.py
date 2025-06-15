@@ -4,9 +4,29 @@ import torch
 from torch.utils.data import Dataset
 from config import CFG
 
+# === Унифицированные функции загрузки данных ===
+
+def load_train_features():
+    """Загрузка признаков для всех моделей"""
+    return pd.read_csv(CFG.paths.train_features_csv).values
+
+def load_train_labels_direction():
+    """Загрузка меток для Direction модели"""
+    return np.load(CFG.paths.train_labels_direction)
+
+def load_train_labels_amplitude():
+    """Загрузка меток для Amplitude модели"""
+    return np.load(CFG.paths.train_labels_amplitude)
+
+def load_train_labels_hitorder():
+    """Загрузка меток для HitOrder модели"""
+    return np.load(CFG.paths.train_labels_hitorder)
+
+# === PyTorch Dataset для Direction модели (последовательности) ===
+
 class SequenceDataset(Dataset):
     """
-    Для Direction модели (sequence input)
+    Датасет для Direction модели (последовательный input)
     """
     def __init__(self, X, y, window_size):
         self.X = X
@@ -21,40 +41,34 @@ class SequenceDataset(Dataset):
         y_label = self.y[idx + self.window_size - 1]
         return torch.tensor(X_seq, dtype=torch.float32), torch.tensor(y_label, dtype=torch.long)
 
-class TabularDataset(Dataset):
+# === PyTorch Dataset для Amplitude модели (табличные данные) ===
+
+class AmplitudeDataset(Dataset):
     """
-    Для Amplitude модели (просто табличные данные)
+    Датасет для Amplitude модели (регрессия)
     """
     def __init__(self, X, y):
-        self.X = X
-        self.y = y
+        self.X = torch.tensor(X, dtype=torch.float32)
+        self.y = torch.tensor(y, dtype=torch.float32)
 
     def __len__(self):
         return len(self.X)
 
     def __getitem__(self, idx):
-        return torch.tensor(self.X[idx], dtype=torch.float32), torch.tensor(self.y[idx], dtype=torch.float32)
+        return self.X[idx], self.y[idx]
+
+# === PyTorch Dataset для HitOrder модели (бинарная классификация) ===
 
 class HitOrderDataset(Dataset):
     """
-    Для HitOrder модели — уже безопасно, без костылей.
+    Датасет для HitOrder модели (бинарная классификация)
     """
-    def __init__(self):
-        # Загружаем фичи
-        features = pd.read_csv(CFG.paths.train_features_csv).values
-        self.features = features.astype(np.float32)
-
-        # Загружаем метки
-        labels = np.load(CFG.paths.train_labels_hitorder)
-        self.labels = labels[:, 2].astype(np.float32)  # берём только колонку hit (0 или 1)
-
-        # Теперь костыль min_len больше не нужен!
-        assert len(self.features) == len(self.labels), "Несовпадение размеров features и labels!"
+    def __init__(self, X, y):
+        self.X = torch.tensor(X, dtype=torch.float32)
+        self.y = torch.tensor(y, dtype=torch.float32)
 
     def __len__(self):
-        return len(self.labels)
+        return len(self.X)
 
     def __getitem__(self, idx):
-        x = self.features[idx]
-        y = self.labels[idx]
-        return torch.tensor(x), torch.tensor(y)
+        return self.X[idx], self.y[idx]

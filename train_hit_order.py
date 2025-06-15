@@ -1,81 +1,96 @@
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader
-
-from model import HitOrderClassifier
-from dataset import HitOrderDataset
-from config import CFG
-import joblib
 import logging
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, balanced_accuracy_score, f1_score
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+from dataset import load_train_features, load_train_labels_hitorder, HitOrderDataset
+from model import HitOrderClassifier
+from config import CFG
 
+logging.basicConfig(level=logging.INFO, format='%(asctime)s [INFO] %(message)s')
 
-class HitOrderTrainer:
-    def __init__(self):
-        logging.info("🚀 Загружаем датасет HitOrder...")
+# 🚀 Загружаем данные централизованно через dataset.py
+logging.info("🚀 Загружаем признаки и метки HitOrder...")
+X = load_train_features()
+y = load_train_labels_hitorder()
 
-        self.dataset = HitOrderDataset()
-        self.dataloader = DataLoader(self.dataset, batch_size=CFG.train.batch_size, shuffle=True)
+# ✂️ Разбиваем на train/val
+X_train, X_val, y_train, y_val = train_test_split(
+    X, y, test_size=CFG.train.val_size, shuffle=False
+)
 
-        # Загружаем feature_columns, чтобы определить размерность входа модели
-        feature_columns = joblib.load(CFG.paths.feature_columns_path)
-        input_size = len(feature_columns)
+# 📊 Создаём датасеты и лоадеры через централизованный HitOrderDataset
+train_dataset = HitOrderDataset(X_train, y_train)
+val_dataset = HitOrderDataset(X_val, y_val)
 
-        self.model = HitOrderClassifier(input_size)
-        self.criterion = nn.BCELoss()
-        self.optimizer = optim.Adam(self.model.parameters(), lr=CFG.train.lr)
+train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=CFG.train.batch_size, shuffle=True)
+val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=CFG.train.batch_size)
 
-    def train(self):
-        logging.info("🚀 Старт обучения HitOrderClassifier")
-        self.model.train()
+# 🧠 Создаём модель
+model = HitOrderClassifier(input_size=X.shape[1])
+model.cuda()
 
-        best_loss = float('inf')
-        epochs_no_improve = 0
-        patience = CFG.train.early_stopping_patience
+# 🎯 Функция потерь — чистый BCE (модель уже выдаёт вероятности)
+loss_fn = nn.BCELoss()
+optimizer = optim.AdamW(model.parameters(), lr=CFG.train.lr)
 
-        for epoch in range(CFG.train.epochs):
-            total_loss = 0
-            y_true, y_pred = [], []
+# 🔖 Early stopping
+best_val_loss = np.inf
+patience_counter = 0
 
-            for X_batch, y_batch in self.dataloader:
-                self.optimizer.zero_grad()
-                outputs = self.model(X_batch).squeeze()
-                loss = self.criterion(outputs, y_batch)
-                loss.backward()
-                self.optimizer.step()
-                total_loss += loss.item()
+logging.info("🧮 Начинаем обучение HitOrder модели...")
 
-                preds = (outputs.detach() >= 0.5).int()
-                y_true.extend(y_batch.cpu().numpy())
-                y_pred.extend(preds.cpu().numpy())
+for epoch in range(1, CFG.train.epochs + 1):
+    model.train()
+    train_losses = []
 
-            avg_loss = total_loss / len(self.dataloader)
-            acc = accuracy_score(y_true, y_pred)
-            precision = precision_score(y_true, y_pred, zero_division=0)
-            recall = recall_score(y_true, y_pred, zero_division=0)
-            f1 = f1_score(y_true, y_pred, zero_division=0)
+    for xb, yb in train_loader:
+        xb, yb = xb.cuda(), yb.cuda().unsqueeze(1)
+        optimizer.zero_grad()
+        preds = model(xb)
+        loss = loss_fn(preds, yb)
+        loss.backward()
+        optimizer.step()
+        train_losses.append(loss.item())
 
-            logging.info(f"🧮 Epoch {epoch + 1}: Loss={avg_loss:.6f}, "
-                         f"Accuracy={acc:.4f}, Precision={precision:.4f}, Recall={recall:.4f}, F1={f1:.4f}")
+    # 🔍 Валидация
+    model.eval()
+    val_losses = []
+    all_preds, all_targets = [], []
 
-            if avg_loss < best_loss:
-                best_loss = avg_loss
-                epochs_no_improve = 0
-                torch.save(self.model.state_dict(), CFG.paths.hit_order_model_path)
-                logging.info("🎯 Новый лучший результат. Модель сохранена.")
-            else:
-                epochs_no_improve += 1
+    with torch.no_grad():
+        for xb, yb in val_loader:
+            xb, yb = xb.cuda(), yb.cuda().unsqueeze(1)
+            preds = model(xb)
+            loss = loss_fn(preds, yb)
+            val_losses.append(loss.item())
 
-            if epochs_no_improve >= patience:
-                logging.info("🛑 Ранняя остановка обучения.")
-                break
+            preds_class = (preds > 0.5).int().cpu().numpy()
+            all_preds.extend(preds_class.flatten())
+            all_targets.extend(yb.cpu().numpy().flatten())
 
-        logging.info("✅ Обучение завершено.")
+    avg_train_loss = np.mean(train_losses)
+    avg_val_loss = np.mean(val_losses)
 
+    acc = accuracy_score(all_targets, all_preds)
+    bal_acc = balanced_accuracy_score(all_targets, all_preds)
+    f1 = f1_score(all_targets, all_preds)
 
-if __name__ == '__main__':
-    trainer = HitOrderTrainer()
-    trainer.train()
+    logging.info(f"📊 Эпоха {epoch}: Train Loss {avg_train_loss:.6f}, Val Loss {avg_val_loss:.6f}, "
+                 f"Accuracy {acc:.4f}, Balanced Acc {bal_acc:.4f}, F1 {f1:.4f}")
+
+    if avg_val_loss < best_val_loss:
+        best_val_loss = avg_val_loss
+        patience_counter = 0
+        torch.save(model.state_dict(), CFG.paths.hit_order_model_path)
+        logging.info("🎯 Новая лучшая модель сохранена.")
+    else:
+        patience_counter += 1
+        if patience_counter >= CFG.train.early_stopping_patience:
+            logging.info("⏸ Ранняя остановка: прогресс замедлился.")
+            break
+
+logging.info("✅ Обучение HitOrder модели завершено.")

@@ -65,6 +65,11 @@ class CFG:
         amplitude_shift = 20
         quantile_window = 30
 
+
+        amplitude_min_sl = 0.005
+        amplitude_max_sl = 0.02
+        amplitude_max_tp = 0.15
+
         # параметры под HitOrder
         hit_order_shift = 20
         hit_order_window = 30
@@ -88,6 +93,10 @@ class CFG:
             "no-trade": 1,
             "long": 2
         }
+
+    class amplitude:
+        log_eps = 1e-6
+        loss_weights = [0.4, 0.1, 0.4, 0.1]
 
     class DirectionModelConfig:
         input_dim = None  # обязательно задаётся позже (динамически)

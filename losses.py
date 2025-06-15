@@ -10,7 +10,7 @@ class CostSensitiveFocalLoss(nn.Module):
     Классический focal loss с поддержкой cost-sensitive обучения.
     """
     def __init__(self, alpha=None, gamma=2.0, label_smoothing=0.0):
-        super(CostSensitiveFocalLoss, self).__init__()
+        super().__init__()
         self.alpha = alpha
         self.gamma = gamma
         self.label_smoothing = label_smoothing
@@ -45,12 +45,22 @@ class QuantileLoss(nn.Module):
 
 
 class AmplitudeLoss(nn.Module):
-    def __init__(self):
+    """
+    Общий лосс для амплитудной модели с поддержкой весов.
+    """
+    def __init__(self, weights=None, device=None):
         super().__init__()
         self.up_p10_loss = QuantileLoss(0.1)
         self.up_p90_loss = QuantileLoss(0.9)
         self.down_p10_loss = QuantileLoss(0.1)
         self.down_p90_loss = QuantileLoss(0.9)
+
+        if weights is None:
+            weights = [1.0, 1.0, 1.0, 1.0]
+
+        self.weights = torch.tensor(weights, dtype=torch.float32)
+        if device is not None:
+            self.weights = self.weights.to(device)
 
     def forward(self, preds, targets):
         up_p10_pred, up_p90_pred, down_p10_pred, down_p90_pred = preds
@@ -61,10 +71,9 @@ class AmplitudeLoss(nn.Module):
         down_p90_target = targets[:, 3:4]
 
         loss = 0
-        loss += self.up_p10_loss(up_p10_pred, up_p10_target)
-        loss += self.up_p90_loss(up_p90_pred, up_p90_target)
-        loss += self.down_p10_loss(down_p10_pred, down_p10_target)
-        loss += self.down_p90_loss(down_p90_pred, down_p90_target)
+        loss += self.weights[0] * self.up_p10_loss(up_p10_pred, up_p10_target)
+        loss += self.weights[1] * self.up_p90_loss(up_p90_pred, up_p90_target)
+        loss += self.weights[2] * self.down_p10_loss(down_p10_pred, down_p10_target)
+        loss += self.weights[3] * self.down_p90_loss(down_p90_pred, down_p90_target)
 
         return loss
-

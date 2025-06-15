@@ -1,91 +1,100 @@
-import pandas as pd
 import numpy as np
+import torch
+import torch.nn as nn
+import torch.optim as optim
 import joblib
 import logging
-import torch
-import torch.optim as optim
-from torch.utils.data import DataLoader
+from sklearn.model_selection import train_test_split
+from tqdm import tqdm
 
-from feature_engineering import FeatureEngineer
-from dataset import TabularDataset
+from dataset import load_train_features, load_train_labels_amplitude, AmplitudeDataset
 from model import AmplitudeModel
 from losses import AmplitudeLoss
 from config import CFG
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+# Логгинг
+logging.basicConfig(level=logging.INFO, format='%(asctime)s [INFO] %(message)s')
 
-class AmplitudeTrainer:
-    def __init__(self):
-        logging.info("🚀 Запуск обучения Amplitude модели")
+# Устройство
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+logging.info(f"Используемое устройство: {device}")
 
-        X = pd.read_csv(CFG.paths.train_features_csv).values
-        y = np.load(CFG.paths.train_labels_amplitude)
+# Константа стабилизации логарифма
+EPS = CFG.amplitude.log_eps
 
-        assert len(X) == len(y), f"Длины X ({len(X)}) и y ({len(y)}) не совпадают!"
-        logging.info(f"✅ Данные загружены: {len(X)} примеров, {X.shape[1]} признаков")
+# === Загрузка данных ===
+logging.info("🚀 Загружаем признаки и амплитудные метки...")
+X = load_train_features()
+y_raw = load_train_labels_amplitude()
 
-        self.engineer = FeatureEngineer()
-        self.engineer.scaler = joblib.load(CFG.paths.scaler_path)
-        self.engineer.feature_columns = joblib.load(CFG.paths.feature_columns_path)
+# Лог-стабилизация
+y = np.log(y_raw + EPS)
 
-        self.dataset = TabularDataset(X, y)
-        self.dataloader = DataLoader(self.dataset, batch_size=CFG.train.batch_size, shuffle=True)
+# Трейн/валидация сплит
+X_train, X_val, y_train, y_val = train_test_split(
+    X, y, test_size=CFG.train.val_size, shuffle=False
+)
 
-        input_size = len(self.engineer.feature_columns)
-        self.model = AmplitudeModel(input_size)
+# Датасеты и лоадеры
+train_dataset = AmplitudeDataset(X_train, y_train)
+val_dataset = AmplitudeDataset(X_val, y_val)
 
-        self.criterion = AmplitudeLoss()
-        self.optimizer = optim.Adam(self.model.parameters(), lr=CFG.train.lr)
+train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=CFG.train.batch_size, shuffle=True)
+val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=CFG.train.batch_size)
 
-    def train(self):
-        logging.info("🚀 Старт цикла обучения")
+# === Модель ===
+model = AmplitudeModel(input_size=X.shape[1]).to(device)
 
-        best_loss = float('inf')
-        epochs_no_improve = 0
-        patience = CFG.train.early_stopping_patience
+# Лосс с весами из конфигурации
+loss_fn = AmplitudeLoss(weights=CFG.amplitude.loss_weights, device=device)
+optimizer = optim.AdamW(model.parameters(), lr=CFG.train.lr)
 
-        self.model.train()
-        for epoch in range(CFG.train.epochs):
-            total_loss = 0
-            mae_up_p10, mae_up_p90, mae_down_p10, mae_down_p90 = [], [], [], []
+# Early stopping
+best_val_loss = np.inf
+patience_counter = 0
 
-            for X_batch, y_batch in self.dataloader:
-                self.optimizer.zero_grad()
-                outputs = self.model(X_batch)
-                loss = self.criterion(outputs, y_batch)
-                loss.backward()
-                self.optimizer.step()
-                total_loss += loss.item()
+logging.info("🧮 Начинаем обучение амплитудной модели...")
 
-                up_p10_pred, up_p90_pred, down_p10_pred, down_p90_pred = outputs
-                up_p10_target, up_p90_target, down_p10_target, down_p90_target = torch.chunk(y_batch, 4, dim=1)
+for epoch in range(1, CFG.train.epochs + 1):
+    model.train()
+    train_losses = []
 
-                mae_up_p10.append(torch.mean(torch.abs(up_p10_pred - up_p10_target)).item())
-                mae_up_p90.append(torch.mean(torch.abs(up_p90_pred - up_p90_target)).item())
-                mae_down_p10.append(torch.mean(torch.abs(down_p10_pred - down_p10_target)).item())
-                mae_down_p90.append(torch.mean(torch.abs(down_p90_pred - down_p90_target)).item())
+    for xb, yb in tqdm(train_loader, desc=f"Эпоха {epoch} [обучение]", leave=False):
+        xb, yb = xb.to(device), yb.to(device)
+        optimizer.zero_grad()
+        preds = model(xb)
+        loss = loss_fn(preds, yb)
+        loss.backward()
+        optimizer.step()
+        train_losses.append(loss.item())
 
-            avg_loss = total_loss / len(self.dataloader)
-            logging.info(
-                f"🧮 Эпоха {epoch + 1}: Train Loss={avg_loss:.6f} | "
-                f"MAE up_p10={np.mean(mae_up_p10):.5f}, up_p90={np.mean(mae_up_p90):.5f}, "
-                f"down_p10={np.mean(mae_down_p10):.5f}, down_p90={np.mean(mae_down_p90):.5f}"
-            )
+    model.eval()
+    val_losses = []
 
-            if avg_loss < best_loss:
-                best_loss = avg_loss
-                epochs_no_improve = 0
-                torch.save(self.model.state_dict(), CFG.paths.amplitude_model_path)
-                logging.info(f"🎯 Новый лучший результат: Train Loss {avg_loss:.6f}. Модель сохранена.")
-            else:
-                epochs_no_improve += 1
+    with torch.no_grad():
+        for xb, yb in val_loader:
+            xb, yb = xb.to(device), yb.to(device)
+            preds = model(xb)
+            loss = loss_fn(preds, yb)
+            val_losses.append(loss.item())
 
-            if epochs_no_improve >= patience:
-                logging.info("🛑 Ранняя остановка обучения.")
-                break
+    avg_train_loss = np.mean(train_losses)
+    avg_val_loss = np.mean(val_losses)
 
-        logging.info("✅ Обучение завершено.")
+    logging.info(f"📊 Эпоха {epoch}: Train Loss {avg_train_loss:.6f}, Val Loss {avg_val_loss:.6f}")
 
-if __name__ == '__main__':
-    trainer = AmplitudeTrainer()
-    trainer.train()
+    if avg_val_loss < best_val_loss - 1e-6:  # чуть более строгий критерий улучшения
+        best_val_loss = avg_val_loss
+        patience_counter = 0
+        torch.save(model.state_dict(), str(CFG.paths.amplitude_model_path))
+        logging.info("🎯 Новая лучшая модель сохранена.")
+    else:
+        patience_counter += 1
+        if patience_counter >= CFG.train.early_stopping_patience:
+            logging.info("⏸ Ранняя остановка: прогресс замедлился.")
+            break
+
+logging.info("✅ Обучение амплитудной модели завершено.")
+
+# Сохраняем параметры нормализации
+joblib.dump({'log_eps': EPS}, str(CFG.paths.base / 'artifacts/model_30m/amplitude_normalization.joblib'))

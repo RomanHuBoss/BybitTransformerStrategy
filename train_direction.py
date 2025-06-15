@@ -1,4 +1,3 @@
-import pandas as pd
 import numpy as np
 import joblib
 import logging
@@ -10,7 +9,7 @@ from sklearn.utils.class_weight import compute_class_weight
 from collections import Counter
 
 from feature_engineering import FeatureEngineer
-from dataset import SequenceDataset
+from dataset import SequenceDataset, load_train_features, load_train_labels_direction
 from model import DirectionalModel
 from losses import CostSensitiveFocalLoss
 from config import CFG
@@ -20,17 +19,19 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 class DirectionalTrainer:
     def __init__(self):
         logging.info("🚀 Начало обучения Direction модели")
-        X = pd.read_csv(CFG.paths.train_features_csv).values
-        y = np.load(CFG.paths.train_labels_direction)
+
+        # Загружаем данные централизованно
+        X = load_train_features()
+        y = load_train_labels_direction()
 
         assert len(X) == len(y), f"Длины X ({len(X)}) и y ({len(y)}) не совпадают!"
         logging.info(f"✅ Данные загружены: {len(X)} примеров, {X.shape[1]} признаков")
 
-        # Новое: логируем распределение классов
+        # Лог распределения классов
         class_counts = Counter(y)
         total_samples = len(y)
         for label, count in class_counts.items():
-            logging.info(f"Класс {label}: {count} примеров ({count/total_samples:.2%})")
+            logging.info(f"📊 Класс {label}: {count} примеров ({count/total_samples:.2%})")
 
         self.engineer = FeatureEngineer()
         self.engineer.scaler = joblib.load(CFG.paths.scaler_path)
@@ -54,7 +55,7 @@ class DirectionalTrainer:
             classes=np.unique(y),
             y=y
         )
-        logging.info(f"Вычисленные веса классов: {class_weights}")
+        logging.info(f"⚖️ Вычисленные веса классов: {class_weights}")
 
         self.criterion = CostSensitiveFocalLoss(alpha=torch.tensor(class_weights, dtype=torch.float32), gamma=2.0, label_smoothing=0.0)
         self.optimizer = optim.Adam(self.model.parameters(), lr=CFG.train.lr)
@@ -93,7 +94,7 @@ class DirectionalTrainer:
                 logging.info(f"🛑 Ранняя остановка: {epochs_no_improve} эпох без улучшения.")
                 break
 
-        logging.info("✅ Обучение завершено.")
+        logging.info("✅ Обучение Direction модели завершено.")
 
     def validate(self):
         self.model.eval()

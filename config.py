@@ -60,19 +60,14 @@ class CFG:
         sl_step = 0.001
 
     class label_generation:
-        direction_shift = 20
         direction_threshold = 0.015
-        amplitude_shift = 20
+
         quantile_window = 30
-
-
         amplitude_min_sl = 0.005
         amplitude_max_sl = 0.02
         amplitude_max_tp = 0.15
 
         # параметры под HitOrder
-        hit_order_shift = 20
-        hit_order_window = 30
         hit_order_sl_min = 0.005  # 0.5% минимальный SL
         hit_order_sl_max = 0.02  # 2% максимальный SL
         hit_order_rr_min = 2.0  # минимальный RR: TP >= 2×SL

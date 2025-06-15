@@ -27,13 +27,12 @@ features.reset_index(drop=True, inplace=True)
 # 3️⃣ Direction метки (range-based, строго от текущей свечи)
 logging.info("Генерация Direction меток (range-based)...")
 
-lookahead = CFG.label_generation.direction_shift  # лучше бы назвать direction_lookahead
 threshold = CFG.label_generation.direction_threshold
 
 direction_labels = []
-for idx in range(len(df_clean) - lookahead):
+for idx in range(len(df_clean) - CFG.labels.lookahead):
     current_close = df_clean.iloc[idx]['close']
-    future_window = df_clean.iloc[idx : idx + lookahead]
+    future_window = df_clean.iloc[idx : idx + CFG.labels.lookahead]
 
     max_return = (future_window['high'].max() - current_close) / current_close
     min_return = (future_window['low'].min() - current_close) / current_close
@@ -56,20 +55,17 @@ df_clean = df_clean.iloc[:valid_length].reset_index(drop=True)
 assert len(features) == len(labels_direction), "Рассинхрон после Direction!"
 logging.info(f"✅ Direction метки (range-based): {len(labels_direction)}")
 
-# 4️⃣ Amplitude метки (30 назад и 20 вперёд)
+# 4️⃣ Amplitude метки (60 назад и 20 вперёд)
 logging.info("Генерация Amplitude меток...")
-
-past_window = CFG.feature_engineering.window_size  # 30 назад
-future_window = CFG.label_generation.amplitude_shift  # 20 вперёд
 
 min_sl = CFG.label_generation.amplitude_min_sl
 max_sl = CFG.label_generation.amplitude_max_sl
 max_tp = CFG.label_generation.amplitude_max_tp
 
 amp_labels = []
-for idx in range(past_window, len(df_clean) - future_window):
+for idx in range(CFG.feature_engineering.window_size, len(df_clean) - CFG.labels.lookahead):
     current_close = df_clean.iloc[idx]['close']
-    future_win = df_clean.iloc[idx : idx + future_window]
+    future_win = df_clean.iloc[idx : idx + CFG.labels.lookahead]
 
     up_ampl = (future_win['high'] - current_close) / current_close
     down_ampl = (current_close - future_win['low']) / current_close
@@ -83,9 +79,9 @@ for idx in range(past_window, len(df_clean) - future_window):
 
 labels_amplitude = np.array(amp_labels)
 
-features = features.iloc[past_window : past_window + len(labels_amplitude)].reset_index(drop=True)
-df_clean = df_clean.iloc[past_window : past_window + len(labels_amplitude)].reset_index(drop=True)
-labels_direction = labels_direction[past_window : past_window + len(labels_amplitude)]
+features = features.iloc[CFG.feature_engineering.window_size : CFG.feature_engineering.window_size + len(labels_amplitude)].reset_index(drop=True)
+df_clean = df_clean.iloc[CFG.feature_engineering.window_size : CFG.feature_engineering.window_size + len(labels_amplitude)].reset_index(drop=True)
+labels_direction = labels_direction[CFG.feature_engineering.window_size : CFG.feature_engineering.window_size + len(labels_amplitude)]
 
 assert len(features) == len(labels_amplitude) == len(labels_direction), "Рассинхрон после Amplitude!"
 logging.info(f"✅ Amplitude метки: {len(labels_amplitude)}")
@@ -93,15 +89,14 @@ logging.info(f"✅ Amplitude метки: {len(labels_amplitude)}")
 # 5️⃣ HitOrder метки (настоящий supervised режим — от текущей свечи)
 logging.info("Генерация HitOrder меток...")
 
-window = CFG.label_generation.hit_order_window
 sl_min = CFG.label_generation.hit_order_sl_min
 sl_max = CFG.label_generation.hit_order_sl_max
 rr_min = CFG.label_generation.hit_order_rr_min
 rr_max = CFG.label_generation.hit_order_rr_max
 
 hit_labels = []
-for idx in range(len(df_clean) - window):
-    win = df_clean.iloc[idx : idx + window]
+for idx in range(len(df_clean) - CFG.labels.lookahead):
+    win = df_clean.iloc[idx : idx + CFG.labels.lookahead]
     close = df_clean.iloc[idx]['close']
 
     sl_relative = np.random.uniform(sl_min, sl_max)

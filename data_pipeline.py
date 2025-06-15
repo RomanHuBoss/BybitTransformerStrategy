@@ -40,7 +40,6 @@ df_clean = df_clean.iloc[:valid_length].reset_index(drop=True)
 labels_direction = labels_direction[:valid_length]
 
 assert len(features) == len(labels_direction), "Рассинхрон после Direction!"
-np.save(CFG.paths.train_labels_direction, labels_direction)
 logging.info(f"✅ Direction метки: {len(labels_direction)}")
 
 # 4️⃣ Amplitude метки
@@ -71,7 +70,6 @@ df_clean = df_clean.iloc[:cut_len].reset_index(drop=True)
 labels_direction = labels_direction[:cut_len]
 
 assert len(features) == len(labels_amplitude) == len(labels_direction), "Рассинхрон после Amplitude!"
-np.save(CFG.paths.train_labels_amplitude, labels_amplitude)
 logging.info(f"✅ Amplitude метки: {len(labels_amplitude)}")
 
 # 5️⃣ HitOrder метки
@@ -111,12 +109,14 @@ features = features.iloc[:final_len].reset_index(drop=True)
 labels_direction = labels_direction[:final_len]
 labels_amplitude = labels_amplitude[:final_len]
 
+# Финальная синхронизация всех меток
 assert len(features) == len(labels_hitorder) == len(labels_amplitude) == len(labels_direction), "Финальный рассинхрон!"
 
+# Только сейчас — окончательное сохранение всех меток и признаков
+features.to_csv(CFG.paths.train_features_csv, index=False)
+np.save(CFG.paths.train_labels_direction, labels_direction)
+np.save(CFG.paths.train_labels_amplitude, labels_amplitude)
 np.save(CFG.paths.train_labels_hitorder, labels_hitorder)
 
-# Финальная безопасная запись признаков
-features.to_csv(CFG.paths.train_features_csv, index=False)
-logging.info(f"✅ Сохранены признаки: {len(features)} строк")
-
-logging.info("🎯 Полный суперстабильный боевой пайплайн завершён!")
+logging.info(f"✅ Финально сохранены признаки и метки: {len(features)} строк")
+logging.info("🎯 Полный суперфинальный боевой пайплайн завершён!")

@@ -5,6 +5,7 @@ def run_script(script_name):
     subprocess.run(["python", script_name], check=True)
 
 if __name__ == "__main__":
+    run_script("reset_data.py")
     run_script("data_pipeline.py")
     run_script("train_direction.py")
     run_script("train_amplitude.py")

@@ -1,105 +1,69 @@
-import pandas as pd
 import numpy as np
-import torch
-import torch.nn.functional as F
+import pandas as pd
 import joblib
-import logging
-
-from torch.utils.data import DataLoader
+import torch
+import torch.nn as nn
+from torch.utils.data import TensorDataset, DataLoader
 from sklearn.model_selection import train_test_split
 from scipy.optimize import minimize
-
-from dataset import SequenceDataset
-from directional_label_generator import DirectionalLabelGenerator
-from feature_engineering import FeatureEngineer
-from model import DirectionalModel
 from config import CFG
+from model import DirectionalModel  # <-- вот тут теперь всё корректно
+from feature_engineering import FeatureEngineer
 
-# --- Логирование ---
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+def load_data():
+    features = pd.read_csv(CFG.paths.train_features_csv, index_col=0)
+    feature_engineer = FeatureEngineer()
+    feature_engineer.feature_columns = joblib.load(CFG.paths.feature_columns_path)
+    feature_engineer.scaler = joblib.load(CFG.paths.scaler_path)
+    features = feature_engineer.forward(features, window_size=CFG.train.direction_window_size)
+
+    labels = np.load(CFG.paths.train_labels_direction)
+    labels = labels[-len(features):]
+
+    return features, labels
 
 
-def get_validation_logits_and_labels():
-    logging.info("Загружаем обучающие данные...")
-    df = pd.read_csv(CFG.paths.train_csv)
-
-    engineer = FeatureEngineer()
-    engineer.scaler = joblib.load(CFG.paths.scaler_path)
-    engineer.feature_columns = joblib.load(CFG.paths.feature_columns_path)
-    df_feat = engineer.generate_features(df, fit=False)
-
-    generator = DirectionalLabelGenerator(
-        shift=CFG.label_generation.direction_shift,
-        threshold=CFG.label_generation.direction_threshold
-    )
-    labels = generator.generate_labels(df)
-    labels_series = pd.Series(labels, index=df.index[:-generator.shift])
-
-    # Синхронизация индексов с метками
-    df_feat = df_feat.merge(
-        labels_series.rename("label"),
-        left_index=True, right_index=True, how="inner"
-    )
-    df_feat = df_feat.dropna(subset=["label"])
-
-    X = df_feat.drop(columns=['label']).values
-    y = df_feat['label'].astype(int).values
-
-    X_train, X_val, y_train, y_val = train_test_split(
-        X, y, test_size=CFG.train.val_size, shuffle=False
-    )
-
-    window_size = CFG.feature_engineering.window_size
-
-    val_ds = SequenceDataset(X_val, y_val, window_size)
-    val_loader = DataLoader(val_ds, batch_size=CFG.train.batch_size, shuffle=False)
-
-    input_dim = X.shape[1]
-    model_cfg = CFG.DirectionModelConfig()
-    model_cfg.input_dim = input_dim
-
-    model = DirectionalModel(model_config=model_cfg)
-    model.load_state_dict(torch.load(CFG.paths.direction_model_path))
+def load_model(input_dim):
+    model_config = CFG.DirectionModelConfig()
+    model_config.input_dim = input_dim
+    model = DirectionalModel(model_config)
+    state_dict = torch.load(CFG.paths.direction_model_path, map_location=torch.device("cpu"))
+    model.load_state_dict(state_dict)
     model.eval()
+    return model
 
-    logits_list = []
-    labels_list = []
 
+def evaluate_temperature(model, X_val, y_val):
+    logits = []
     with torch.no_grad():
-        for X_batch, y_batch in val_loader:
-            logits = model(X_batch)
-            logits_list.append(logits.numpy())
-            labels_list.append(y_batch.numpy())
+        for i in range(0, len(X_val), 512):
+            batch = torch.tensor(X_val[i:i+512]).float()
+            output = model(batch)
+            logits.append(output)
+    logits = torch.cat(logits)
 
-    logits = np.concatenate(logits_list, axis=0)
-    labels = np.concatenate(labels_list, axis=0)
+    criterion = nn.CrossEntropyLoss()
 
-    return logits, labels
+    def loss_fn(temp):
+        temp_tensor = torch.tensor(temp, dtype=torch.float32)
+        scaled_logits = logits / temp_tensor
+        loss = criterion(scaled_logits, torch.tensor(y_val))
+        return loss.item()
 
-
-def temperature_loss(T, logits, labels):
-    T = T[0]
-    scaled_logits = logits / T
-    probs = F.softmax(torch.tensor(scaled_logits), dim=1).numpy()
-    log_probs = np.log(probs + 1e-8)
-    nll = -np.mean(log_probs[np.arange(len(labels)), labels])
-    return nll
+    res = minimize(loss_fn, x0=np.array([1.0]), bounds=[(0.1, 10.0)])
+    return res.x[0]
 
 
-def calibrate_temperature():
-    logging.info("🚀 Старт Temperature Calibration...")
+if __name__ == "__main__":
+    X, y = load_data()
+    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=CFG.train.val_size, random_state=42)
 
-    logits, labels = get_validation_logits_and_labels()
+    input_dim = X.shape[2]
+    model = load_model(input_dim)
 
-    logging.info("Оптимизируем температуру...")
-    result = minimize(temperature_loss, [1.0], args=(logits, labels), bounds=[(0.5, 5.0)])
-    optimal_T = result.x[0]
+    temperature = evaluate_temperature(model, X_val, y_val)
+    print(f"Лучшее значение температуры: {temperature:.4f}")
 
-    logging.info(f"✅ Температура откалибрована: T = {optimal_T:.4f}")
-
-    joblib.dump(optimal_T, CFG.paths.temperature_path)
-    logging.info(f"Температура сохранена в {CFG.paths.temperature_path}")
-
-
-if __name__ == '__main__':
-    calibrate_temperature()
+    joblib.dump(temperature, CFG.paths.temperature_path)
+    print(f"Температура сохранена в {CFG.paths.temperature_path}")

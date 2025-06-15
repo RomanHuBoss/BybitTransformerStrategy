@@ -15,7 +15,7 @@ class SnapshotInference:
         self.symbols_all = self.symbol_provider.get_bybit_symbols_list(limit=1000)
         self.max_symbols = 300
         self.snapshot = {}
-        self.semaphore = Semaphore(10)
+        self.semaphore = Semaphore(15)
         self.symbol_pointer = 0  # указатель на следующую партию
 
     async def preload_snapshot(self):
@@ -24,10 +24,10 @@ class SnapshotInference:
     async def update_snapshot_loop(self):
         while True:
             await self.incremental_update()
-            await asyncio.sleep(1)  # минимальная пауза между партиями
+            await asyncio.sleep(1)  # пауза между итерациями
 
     async def incremental_update(self):
-        batch_size = 10  # обновляем по 10 символов за раз
+        batch_size = 15  # обновляем по 15 символов за раз
         end_pointer = min(self.symbol_pointer + batch_size, len(self.symbols_all))
         batch_symbols = self.symbols_all[self.symbol_pointer:end_pointer]
 
@@ -36,9 +36,10 @@ class SnapshotInference:
             symbol, result = await future
             if result is not None:
                 self.snapshot[symbol] = result
+            elif symbol in self.snapshot:
+                del self.snapshot[symbol]
 
         self.symbol_pointer = end_pointer if end_pointer < len(self.symbols_all) else 0
-
         logging.info(f"Инкрементальная обработка: {self.symbol_pointer}/{len(self.symbols_all)}")
 
     async def process_symbol(self, symbol):

@@ -16,17 +16,14 @@ class HybridPredictor:
         model_cfg = CFG.DirectionModelConfig()
         model_cfg.input_dim = input_dim
 
-        # Direction model
         self.direction_model = DirectionalModel(model_cfg)
         self.direction_model.load_state_dict(torch.load(CFG.paths.direction_model_path))
         self.direction_model.eval()
 
-        # Amplitude model
         self.amplitude_model = AmplitudeModel(input_size=input_dim)
         self.amplitude_model.load_state_dict(torch.load(CFG.paths.amplitude_model_path))
         self.amplitude_model.eval()
 
-        # HitOrderClassifier
         self.hit_order_model = HitOrderClassifier(input_size=input_dim)
         self.hit_order_model.load_state_dict(torch.load(CFG.paths.hit_order_model_path))
         self.hit_order_model.eval()
@@ -52,13 +49,11 @@ class HybridPredictor:
         X_flat_tensor = torch.tensor(X_flat_input)
 
         with torch.no_grad():
-            # Direction
             logits = self.direction_model(X_tensor).numpy() / self.temperature
             probs = self.softmax(logits)
             final_class = int(np.argmax(probs))
-            confidence = float(probs[0, final_class])
+            confidence = float(probs[0, final_class])  # просто сохраняем для UI
 
-            # Amplitude
             up_p10_pred, up_p90_pred, down_p10_pred, down_p90_pred = self.amplitude_model(X_flat_tensor)
             up_p10 = up_p10_pred.item()
             up_p90 = up_p90_pred.item()
@@ -68,22 +63,20 @@ class HybridPredictor:
             amplitude_pred = max(up_p90, down_p90)
             amplitude_spread = max(up_p90 - up_p10, down_p90 - down_p10)
 
-            # HitOrderClassifier
             hit_order_prob = self.hit_order_model(X_flat_tensor).item()
 
         hit_order_class = int(hit_order_prob >= 0.5)
 
-        # === Корректная постобработка TP / SL / RR ===
         tp = max(up_p90, 0.001)
         sl_raw = max(down_p90, 0.001)
-
-        # Защита от нулевых и отрицательных SL:
         min_sl_value = CFG.labels.sl_min
         sl = max(sl_raw, min_sl_value)
-
-        # RR всегда ограничиваем адекватными границами:
         rr = tp / sl if sl > 0 else 0.0
         rr = max(0.0, min(rr, 50.0))
+
+        # === Финальный risk-фильтр: теперь БЕЗ confidence ===
+        if rr < 2.0 or sl > 0.02 or amplitude_pred < 0.005:
+            return None
 
         return {
             "final_class": final_class,

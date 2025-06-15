@@ -12,85 +12,99 @@ from config import CFG
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [INFO] %(message)s')
 
-# 🚀 Загружаем данные централизованно через dataset.py
-logging.info("🚀 Загружаем признаки и метки HitOrder...")
-X = load_train_features()
-y = load_train_labels_hitorder()
+def main():
+    # 1️⃣ Определяем устройство
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    logging.info(f"⚡️ Работаем на устройстве: {device}")
 
-# ✂️ Разбиваем на train/val
-X_train, X_val, y_train, y_val = train_test_split(
-    X, y, test_size=CFG.train.val_size, shuffle=False
-)
+    # 2️⃣ Загружаем признаки и метки
+    logging.info("🚀 Загружаем признаки и метки HitOrder...")
+    X = load_train_features()
+    y_full = load_train_labels_hitorder()
 
-# 📊 Создаём датасеты и лоадеры через централизованный HitOrderDataset
-train_dataset = HitOrderDataset(X_train, y_train)
-val_dataset = HitOrderDataset(X_val, y_val)
+    # Важно: теперь у нас 4 столбца — берем только колонку 'hit' (т.е. последний столбец)
+    y = y_full[:, 3].astype(np.float32)
 
-train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=CFG.train.batch_size, shuffle=True)
-val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=CFG.train.batch_size)
+    # Немного статистики по классам
+    n_pos = np.sum(y == 1)
+    n_neg = np.sum(y == 0)
+    logging.info(f"✅ Баланс классов: POS={n_pos}, NEG={n_neg}, POS%={n_pos / len(y):.3%}")
 
-# 🧠 Создаём модель
-model = HitOrderClassifier(input_size=X.shape[1])
-model.cuda()
+    # 3️⃣ Разделяем на train/val
+    X_train, X_val, y_train, y_val = train_test_split(
+        X, y, test_size=CFG.train.val_size, shuffle=False
+    )
 
-# 🎯 Функция потерь — чистый BCE (модель уже выдаёт вероятности)
-loss_fn = nn.BCELoss()
-optimizer = optim.AdamW(model.parameters(), lr=CFG.train.lr)
+    # 4️⃣ Создаем датасеты и загрузчики
+    train_dataset = HitOrderDataset(X_train, y_train)
+    val_dataset = HitOrderDataset(X_val, y_val)
 
-# 🔖 Early stopping
-best_val_loss = np.inf
-patience_counter = 0
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=CFG.train.batch_size, shuffle=True)
+    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=CFG.train.batch_size)
 
-logging.info("🧮 Начинаем обучение HitOrder модели...")
+    # 5️⃣ Создаем модель
+    model = HitOrderClassifier(input_size=X.shape[1]).to(device)
 
-for epoch in range(1, CFG.train.epochs + 1):
-    model.train()
-    train_losses = []
+    # 6️⃣ Функция потерь (BCELoss при слабом дисбалансе — допустимо, иначе можно позже ввести BCEWithLogitsLoss + pos_weight)
+    loss_fn = nn.BCELoss()
+    optimizer = optim.AdamW(model.parameters(), lr=CFG.train.lr)
 
-    for xb, yb in train_loader:
-        xb, yb = xb.cuda(), yb.cuda().unsqueeze(1)
-        optimizer.zero_grad()
-        preds = model(xb)
-        loss = loss_fn(preds, yb)
-        loss.backward()
-        optimizer.step()
-        train_losses.append(loss.item())
+    # 7️⃣ Early stopping и логгирование
+    best_val_loss = np.inf
+    patience_counter = 0
+    logging.info("🧮 Старт обучения HitOrder модели...")
 
-    # 🔍 Валидация
-    model.eval()
-    val_losses = []
-    all_preds, all_targets = [], []
+    for epoch in range(1, CFG.train.epochs + 1):
+        model.train()
+        train_losses = []
 
-    with torch.no_grad():
-        for xb, yb in val_loader:
-            xb, yb = xb.cuda(), yb.cuda().unsqueeze(1)
+        for xb, yb in train_loader:
+            xb, yb = xb.to(device), yb.to(device).unsqueeze(1)
+            optimizer.zero_grad()
             preds = model(xb)
             loss = loss_fn(preds, yb)
-            val_losses.append(loss.item())
+            loss.backward()
+            optimizer.step()
+            train_losses.append(loss.item())
 
-            preds_class = (preds > 0.5).int().cpu().numpy()
-            all_preds.extend(preds_class.flatten())
-            all_targets.extend(yb.cpu().numpy().flatten())
+        # Валидация
+        model.eval()
+        val_losses = []
+        all_preds, all_targets = [], []
 
-    avg_train_loss = np.mean(train_losses)
-    avg_val_loss = np.mean(val_losses)
+        with torch.no_grad():
+            for xb, yb in val_loader:
+                xb, yb = xb.to(device), yb.to(device).unsqueeze(1)
+                preds = model(xb)
+                loss = loss_fn(preds, yb)
+                val_losses.append(loss.item())
 
-    acc = accuracy_score(all_targets, all_preds)
-    bal_acc = balanced_accuracy_score(all_targets, all_preds)
-    f1 = f1_score(all_targets, all_preds)
+                preds_class = (preds > 0.5).int().cpu().numpy()
+                all_preds.extend(preds_class.flatten())
+                all_targets.extend(yb.cpu().numpy().flatten())
 
-    logging.info(f"📊 Эпоха {epoch}: Train Loss {avg_train_loss:.6f}, Val Loss {avg_val_loss:.6f}, "
-                 f"Accuracy {acc:.4f}, Balanced Acc {bal_acc:.4f}, F1 {f1:.4f}")
+        avg_train_loss = np.mean(train_losses)
+        avg_val_loss = np.mean(val_losses)
+        acc = accuracy_score(all_targets, all_preds)
+        bal_acc = balanced_accuracy_score(all_targets, all_preds)
+        f1 = f1_score(all_targets, all_preds)
 
-    if avg_val_loss < best_val_loss:
-        best_val_loss = avg_val_loss
-        patience_counter = 0
-        torch.save(model.state_dict(), CFG.paths.hit_order_model_path)
-        logging.info("🎯 Новая лучшая модель сохранена.")
-    else:
-        patience_counter += 1
-        if patience_counter >= CFG.train.early_stopping_patience:
-            logging.info("⏸ Ранняя остановка: прогресс замедлился.")
-            break
+        logging.info(f"📊 Эпоха {epoch}: Train Loss={avg_train_loss:.6f} | "
+                     f"Val Loss={avg_val_loss:.6f} | Acc={acc:.4f} | "
+                     f"Balanced Acc={bal_acc:.4f} | F1={f1:.4f}")
 
-logging.info("✅ Обучение HitOrder модели завершено.")
+        if avg_val_loss < best_val_loss:
+            best_val_loss = avg_val_loss
+            patience_counter = 0
+            torch.save(model.state_dict(), CFG.paths.hit_order_model_path)
+            logging.info("🎯 Лучшая модель обновлена.")
+        else:
+            patience_counter += 1
+            if patience_counter >= CFG.train.early_stopping_patience:
+                logging.info("⏸ Early stopping — остановка обучения.")
+                break
+
+    logging.info("✅ Обучение HitOrder модели завершено.")
+
+if __name__ == "__main__":
+    main()

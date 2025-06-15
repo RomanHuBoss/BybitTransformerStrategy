@@ -86,7 +86,7 @@ labels_direction = labels_direction[CFG.feature_engineering.window_size : CFG.fe
 assert len(features) == len(labels_amplitude) == len(labels_direction), "Рассинхрон после Amplitude!"
 logging.info(f"✅ Amplitude метки: {len(labels_amplitude)}")
 
-# 5️⃣ HitOrder метки (настоящий supervised режим — от текущей свечи)
+# 5️⃣ HitOrder метки (direction-aware режим)
 logging.info("Генерация HitOrder меток...")
 
 sl_min = CFG.label_generation.hit_order_sl_min
@@ -95,25 +95,49 @@ rr_min = CFG.label_generation.hit_order_rr_min
 rr_max = CFG.label_generation.hit_order_rr_max
 
 hit_labels = []
+
 for idx in range(len(df_clean) - CFG.labels.lookahead):
     win = df_clean.iloc[idx : idx + CFG.labels.lookahead]
     close = df_clean.iloc[idx]['close']
 
+    # Берем направление из уже рассчитанных Direction меток
+    direction = labels_direction[idx]
+
+    # Пропускаем no-trade
+    if direction == 1:
+        continue
+
     sl_relative = np.random.uniform(sl_min, sl_max)
-    sl_level = close * (1 - sl_relative)
     rr = np.random.uniform(rr_min, rr_max)
     tp_relative = sl_relative * rr
-    tp_level = close * (1 + tp_relative)
 
     hit = 0
-    for _, row in win.iterrows():
-        if row['high'] >= tp_level:
-            hit = 1
-            break
-        elif row['low'] <= sl_level:
-            hit = 0
-            break
-    hit_labels.append([sl_relative, tp_relative, hit])
+
+    if direction == 2:  # Long сценарий
+        sl_level = close * (1 - sl_relative)
+        tp_level = close * (1 + tp_relative)
+
+        for _, row in win.iterrows():
+            if row['high'] >= tp_level:
+                hit = 1
+                break
+            elif row['low'] <= sl_level:
+                hit = 0
+                break
+
+    elif direction == 0:  # Short сценарий
+        sl_level = close * (1 + sl_relative)
+        tp_level = close * (1 - tp_relative)
+
+        for _, row in win.iterrows():
+            if row['low'] <= tp_level:
+                hit = 1
+                break
+            elif row['high'] >= sl_level:
+                hit = 0
+                break
+
+    hit_labels.append([direction, sl_relative, tp_relative, hit])
 
 labels_hitorder = np.array(hit_labels)
 

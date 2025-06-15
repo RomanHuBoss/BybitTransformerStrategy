@@ -38,6 +38,7 @@ class DirectionalModel(nn.Module):
 # Amplitude Model (Quantile Head V4.0)
 # ======================================
 
+
 class AmplitudeModel(nn.Module):
     def __init__(self, input_size):
         super().__init__()
@@ -52,7 +53,9 @@ class AmplitudeModel(nn.Module):
             nn.ReLU()
         )
 
-        # HEADS теперь со стабилизацией через Tanh
+        self.scale_up = 0.15  # максимально возможное значение вверх
+        self.scale_down = 0.02  # максимально возможное значение вниз
+
         self.up_p10_head = nn.Sequential(
             nn.Linear(128, 1),
             nn.Tanh()
@@ -72,10 +75,10 @@ class AmplitudeModel(nn.Module):
 
     def forward(self, x):
         shared_out = self.shared(x)
-        up_p10 = self.up_p10_head(shared_out)
-        up_p90 = self.up_p90_head(shared_out)
-        down_p10 = self.down_p10_head(shared_out)
-        down_p90 = self.down_p90_head(shared_out)
+        up_p10 = self.up_p10_head(shared_out) * self.scale_up
+        up_p90 = self.up_p90_head(shared_out) * self.scale_up
+        down_p10 = self.down_p10_head(shared_out) * self.scale_down
+        down_p90 = self.down_p90_head(shared_out) * self.scale_down
         return up_p10, up_p90, down_p10, down_p90
 
 class HitOrderClassifier(nn.Module):

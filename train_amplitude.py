@@ -19,16 +19,10 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s [INFO] %(message)s')
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 logging.info(f"Используемое устройство: {device}")
 
-# Константа стабилизации логарифма
-EPS = CFG.amplitude.log_eps
-
 # === Загрузка данных ===
 logging.info("🚀 Загружаем признаки и амплитудные метки...")
 X = load_train_features()
-y_raw = load_train_labels_amplitude()
-
-# Лог-стабилизация
-y = np.log(y_raw + EPS)
+y = load_train_labels_amplitude()  # без логарифма
 
 # Трейн/валидация сплит
 X_train, X_val, y_train, y_val = train_test_split(
@@ -83,7 +77,7 @@ for epoch in range(1, CFG.train.epochs + 1):
 
     logging.info(f"📊 Эпоха {epoch}: Train Loss {avg_train_loss:.6f}, Val Loss {avg_val_loss:.6f}")
 
-    if avg_val_loss < best_val_loss - 1e-6:  # чуть более строгий критерий улучшения
+    if avg_val_loss < best_val_loss - 1e-6:
         best_val_loss = avg_val_loss
         patience_counter = 0
         torch.save(model.state_dict(), str(CFG.paths.amplitude_model_path))
@@ -95,6 +89,3 @@ for epoch in range(1, CFG.train.epochs + 1):
             break
 
 logging.info("✅ Обучение амплитудной модели завершено.")
-
-# Сохраняем параметры нормализации
-joblib.dump({'log_eps': EPS}, str(CFG.paths.base / 'artifacts/model_30m/amplitude_normalization.joblib'))

@@ -62,7 +62,6 @@ class CFG:
     class label_generation:
         direction_threshold = 0.015
 
-        quantile_window = 30
         amplitude_min_sl = 0.005
         amplitude_max_sl = 0.02
         amplitude_max_tp = 0.15

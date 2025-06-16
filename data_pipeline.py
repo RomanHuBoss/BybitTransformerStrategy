@@ -8,32 +8,30 @@ from feature_engineering import FeatureEngineer
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
-# Генерация direction-меток (3 класса: падение, боковик, рост)
+# Генерация direction-меток
 def generate_direction_labels(df, threshold, lookahead):
     labels = []
     for i in range(len(df)):
         if i + lookahead >= len(df):
-            labels.append(1)  # нет будущих данных → считаем боковик
+            labels.append(1)
             continue
-
         future_close = df.iloc[i + lookahead]["close"]
         change = (future_close - df.iloc[i]["close"]) / df.iloc[i]["close"]
 
         if change > threshold:
-            labels.append(2)  # рост
+            labels.append(2)
         elif change < -threshold:
-            labels.append(0)  # падение
+            labels.append(0)
         else:
-            labels.append(1)  # боковик
+            labels.append(1)
     return labels
 
-# Генерация amplitude-меток (амплитудные квантили будущих движений)
+# Генерация amplitude-меток
 def generate_amplitude_labels(df, lookahead):
     up_p10, up_p90, down_p10, down_p90 = [], [], [], []
 
     for i in range(len(df)):
         if i + lookahead >= len(df):
-            # Нет будущих данных — считаем как идеальный боковик (нулевая амплитуда)
             up_p10.append(0)
             up_p90.append(0)
             down_p10.append(0)
@@ -58,48 +56,44 @@ def generate_amplitude_labels(df, lookahead):
         "amp_down_p90": down_p90
     })
 
-# Генерация hitorder-меток (срабатывание TP/SL по профилям)
+# Ускоренный hitorder
 def generate_hitorder_labels(df, sl_list, rr_list, lookahead):
     result = {}
+
+    highs = df["high"].values
+    lows = df["low"].values
+    closes = df["close"].values
+    n = len(df)
 
     for sl in sl_list:
         for rr in rr_list:
             column_name = f"hit_SL{sl}_RR{rr}"
-            labels = []
+            labels = np.zeros(n, dtype=int)
 
-            for i in range(len(df)):
+            tp_prices = closes * (1 + rr * sl)
+            sl_prices = closes * (1 - sl)
+
+            for i in range(n):
                 start_idx = i + 1
                 end_idx = i + 1 + lookahead
 
-                if end_idx >= len(df):
-                    labels.append(0)  # нет будущих данных — считаем как SL
+                if end_idx >= n:
+                    labels[i] = 0
                     continue
 
-                entry_price = df.iloc[i]['close']
-                tp_price = entry_price * (1 + rr * sl)
-                sl_price = entry_price * (1 - sl)
+                high_window = highs[start_idx:end_idx]
+                low_window = lows[start_idx:end_idx]
 
-                window = df.iloc[start_idx:end_idx]
-                hit_label = None
+                hit_tp = high_window >= tp_prices[i]
+                hit_sl = low_window <= sl_prices[i]
 
-                for _, row in window.iterrows():
-                    high = row['high']
-                    low = row['low']
+                first_tp = np.argmax(hit_tp) if np.any(hit_tp) else lookahead + 1
+                first_sl = np.argmax(hit_sl) if np.any(hit_sl) else lookahead + 1
 
-                    if high >= tp_price and low <= sl_price:
-                        hit_label = 0  # оба достигнуты — SL
-                        break
-                    elif high >= tp_price:
-                        hit_label = 1  # TP
-                        break
-                    elif low <= sl_price:
-                        hit_label = 0  # SL
-                        break
-
-                if hit_label is None:
-                    labels.append(0)  # ничего не достигнуто — считаем SL
+                if first_tp < first_sl:
+                    labels[i] = 1
                 else:
-                    labels.append(hit_label)
+                    labels[i] = 0
 
             result[column_name] = labels
 
@@ -118,7 +112,6 @@ def main():
     df_features = fe.generate_features(df, fit=True)
     logging.info(f"✅ Сгенерировано признаков: {df_features.shape[1]}")
 
-    # Синхронизация с длиной признаков после feature engineering
     df = df.tail(len(df_features)).reset_index(drop=True)
     df_features = df_features.reset_index(drop=True)
 
@@ -136,7 +129,7 @@ def main():
     )
     df_features = pd.concat([df_features, amp_labels], axis=1)
 
-    logging.info("🎯 Генерируем HitOrder метки...")
+    logging.info("🎯 Генерируем HitOrder метки (ускоренная версия)...")
     df_features = generate_hitorder_labels(
         df,
         sl_list=CFG.label_generation.hitorder_sl_list,
@@ -144,27 +137,30 @@ def main():
         lookahead=CFG.label_generation.hitorder_lookahead
     )
 
-    # Удаляем только строки с пропусками в самих признаках (теоретически их быть не должно)
     df_features.dropna(inplace=True)
     df_features.reset_index(drop=True, inplace=True)
-
     logging.info(f"💾 Сохраняем итоговый датасет: {len(df_features)} строк")
     df_features.to_csv(CFG.paths.train_features_csv, index=False)
 
-    # ⬇️ АВТОМАТИЧЕСКИЙ scaler и сохранение признаков:
-
     logging.info("⚙️ Обучаем scaler и сохраняем признаки...")
 
-    # Определяем признаки: всё кроме лейблов
-    feature_cols = [col for col in df_features.columns if not col.startswith("direction_label")
-                     and not col.startswith("amp_")
-                     and not col.startswith("hit_SL")]
+    non_feature_cols = [
+        'open_time', 'close_time', 'timestamp', 'date', 'symbol',
+        'quote_volume', 'count', 'taker_buy_volume', 'taker_buy_quote_volume', 'ignore'
+    ]
 
-    # Обучаем scaler
+    non_label_cols = ['direction_label'] + [
+        col for col in df_features.columns if col.startswith("amp_") or col.startswith("hit_SL")
+    ]
+
+    feature_cols = [
+        col for col in df_features.columns
+        if col not in (non_feature_cols + non_label_cols)
+    ]
+
     scaler = StandardScaler()
     scaler.fit(df_features[feature_cols])
 
-    # Сохраняем scaler и список признаков
     joblib.dump(scaler, CFG.paths.scaler_path)
     pd.Series(feature_cols).to_csv(CFG.paths.feature_columns_path, index=False)
 

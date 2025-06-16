@@ -117,14 +117,14 @@ def main():
     logging.info("🏷 Генерируем Direction метки...")
     df_features['direction_label'] = generate_direction_labels(
         df_features,
-        lookahead=CFG.label.lookahead,
-        threshold=CFG.label.direction_threshold
+        lookahead=CFG.label_generation.direction_lookahead,
+        threshold=CFG.label_generation.direction_threshold
     )
 
     logging.info("📈 Генерируем Amplitude метки (ускоренная версия)...")
     amp_labels = generate_amplitude_labels(
         df_features,
-        lookahead=CFG.label.lookahead
+        lookahead=CFG.label_generation.amplitude_lookahead,
     )
     df_features = pd.concat([df_features, amp_labels], axis=1)
 

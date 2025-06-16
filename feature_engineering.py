@@ -12,13 +12,18 @@ import os
 
 
 class FeatureEngineer:
-    def __init__(self):
+    def __init__(self, feature_columns=None):
         self.feature_columns = None
         self.scaler = None
 
-        # Попробуем сразу загрузить признаки из файла, если он существует
-        if os.path.exists(CFG.paths.feature_columns_path):
-            self.feature_columns = joblib.load(CFG.paths.feature_columns_path)
+        path = CFG.paths.feature_columns_path
+
+        if feature_columns is not None:
+            self.feature_columns = feature_columns
+        elif os.path.exists(path):
+            self.feature_columns = joblib.load(path)
+        else:
+            self.feature_columns = None
 
         # Загружаем scaler, если есть
         if os.path.exists(CFG.paths.scaler_path):

@@ -31,7 +31,7 @@ def generate_direction_labels(df, lookahead, threshold):
 
     return labels
 
-# Amplitude лейблинг (ускоренная версия)
+# Amplitude лейблинг
 def generate_amplitude_labels(df, lookahead):
     highs = df['high'].values
     lows = df['low'].values
@@ -67,7 +67,7 @@ def generate_amplitude_labels(df, lookahead):
         "amp_down_p90": down_p90
     })
 
-# HitOrder лейблинг (ускоренная версия)
+# HitOrder лейблинг
 def generate_hitorder_labels(df, sl_list, rr_list, lookahead):
     close_prices = df['close'].values
     highs = df['high'].values
@@ -104,49 +104,49 @@ def generate_hitorder_labels(df, sl_list, rr_list, lookahead):
     return pd.DataFrame(hit_labels)
 
 # Основной пайплайн
+
 def main():
     logging.info("🚀 Загружаем исходные данные...")
-    df = pd.read_csv(CFG.paths.data_path)
-    logging.info(f"✅ Загружено {len(df)} строк")
-
-    logging.info("🧪 Генерируем признаки...")
-    fe = FeatureEngineer(feature_columns=None)
-    df_features = fe.generate_features(df, fit=True)
-    logging.info(f"✅ Сгенерировано признаков: {df_features.shape[1]}")
+    df_raw = pd.read_csv(CFG.paths.data_path)
+    logging.info(f"✅ Загружено {len(df_raw)} строк")
 
     logging.info("🏷 Генерируем Direction метки...")
-    df_features['direction_label'] = generate_direction_labels(
-        df_features,
+    direction_labels = generate_direction_labels(
+        df_raw,
         lookahead=CFG.label_generation.direction_lookahead,
         threshold=CFG.label_generation.direction_threshold
     )
 
-    logging.info("📈 Генерируем Amplitude метки (ускоренная версия)...")
-    amp_labels = generate_amplitude_labels(
-        df_features,
-        lookahead=CFG.label_generation.amplitude_lookahead,
+    logging.info("📈 Генерируем Amplitude метки...")
+    amplitude_labels = generate_amplitude_labels(
+        df_raw,
+        lookahead=CFG.label_generation.amplitude_lookahead
     )
-    df_features = pd.concat([df_features, amp_labels], axis=1)
 
-    logging.info("🎯 Генерируем HitOrder метки (ускоренная версия)...")
-    hit_labels = generate_hitorder_labels(
-        df_features,
+    logging.info("🎯 Генерируем HitOrder метки...")
+    hitorder_labels = generate_hitorder_labels(
+        df_raw,
         sl_list=CFG.label_generation.hitorder_sl_list,
         rr_list=CFG.label_generation.hitorder_rr_list,
         lookahead=CFG.label_generation.hitorder_lookahead
     )
-    df_features = pd.concat([df_features, hit_labels], axis=1)
 
-    df_features.dropna(inplace=True)
-    logging.info(f"💾 Сохраняем итоговый датасет: {len(df_features)} строк")
+    logging.info("🧪 Генерируем признаки...")
+    fe = FeatureEngineer(feature_columns=None)
+    df_features = fe.generate_features(df_raw, fit=True)
 
-    df_features.to_parquet(CFG.paths.feature_dataset_path, index=False)
+    # Собираем полный датасет
+    df_labels = pd.DataFrame({'direction_label': direction_labels})
+    df_full = pd.concat([df_features, df_labels, amplitude_labels, hitorder_labels], axis=1)
+
+    df_full.dropna(inplace=True)
+    logging.info(f"💾 Итоговый датасет: {len(df_full)} строк")
+
+    # Сохраняем итоговый датасет
+    df_full.to_parquet(CFG.paths.feature_dataset_path, index=False)
 
     logging.info("⚙️ Обучаем scaler и сохраняем признаки...")
-    feature_cols = [col for col in df_features.columns if col not in [
-        "direction_label", "amp_up_p10", "amp_up_p90", "amp_down_p10", "amp_down_p90"
-    ] and not col.startswith("hit_SL") and col not in [
-        "open_time", "close_time", "quote_volume", "count", "taker_buy_volume", "taker_buy_quote_volume", "ignore"]]
+    feature_cols = [col for col in df_features.columns]
 
     scaler = StandardScaler()
     scaler.fit(df_features[feature_cols])

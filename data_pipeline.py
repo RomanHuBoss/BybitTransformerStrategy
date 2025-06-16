@@ -8,7 +8,8 @@ from feature_engineering import FeatureEngineer
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
-# Генерация direction-меток
+
+# Direction (остается как есть, он лёгкий)
 def generate_direction_labels(df, threshold, lookahead):
     labels = []
     for i in range(len(df)):
@@ -26,28 +27,40 @@ def generate_direction_labels(df, threshold, lookahead):
             labels.append(1)
     return labels
 
-# Генерация amplitude-меток
+
+# Ускоренный Amplitude
 def generate_amplitude_labels(df, lookahead):
+    price = df['close'].values
+    highs = df['high'].values
+    lows = df['low'].values
+    n = len(df)
+
+    shifted_highs = np.concatenate([[np.nan], highs[:-1]])
+    shifted_lows = np.concatenate([[np.nan], lows[:-1]])
+
+    high_windows = pd.Series(shifted_highs).rolling(window=lookahead, min_periods=1).apply(lambda x: list(x), raw=False).values
+    low_windows = pd.Series(shifted_lows).rolling(window=lookahead, min_periods=1).apply(lambda x: list(x), raw=False).values
+
     up_p10, up_p90, down_p10, down_p90 = [], [], [], []
 
-    for i in range(len(df)):
-        if i + lookahead >= len(df):
+    for i in range(n):
+        if not isinstance(high_windows[i], list):
             up_p10.append(0)
             up_p90.append(0)
             down_p10.append(0)
             down_p90.append(0)
             continue
 
-        window = df.iloc[i + 1: i + lookahead + 1]
-        price = df.iloc[i]["close"]
+        highs_i = np.array(high_windows[i])
+        lows_i = np.array(low_windows[i])
 
-        up = (window["high"] - price) / price
-        down = (price - window["low"]) / price
+        up_move = (highs_i - price[i]) / price[i]
+        down_move = (price[i] - lows_i) / price[i]
 
-        up_p10.append(up.quantile(0.1))
-        up_p90.append(up.quantile(0.9))
-        down_p10.append(down.quantile(0.1))
-        down_p90.append(down.quantile(0.9))
+        up_p10.append(np.quantile(up_move, 0.1))
+        up_p90.append(np.quantile(up_move, 0.9))
+        down_p10.append(np.quantile(down_move, 0.1))
+        down_p90.append(np.quantile(down_move, 0.9))
 
     return pd.DataFrame({
         "amp_up_p10": up_p10,
@@ -56,7 +69,8 @@ def generate_amplitude_labels(df, lookahead):
         "amp_down_p90": down_p90
     })
 
-# Ускоренный hitorder
+
+# HitOrder (оптимизированный)
 def generate_hitorder_labels(df, sl_list, rr_list, lookahead):
     result = {}
 
@@ -102,6 +116,7 @@ def generate_hitorder_labels(df, sl_list, rr_list, lookahead):
 
     return df
 
+
 def main():
     logging.info("🚀 Загружаем исходные данные...")
     df = pd.read_csv(CFG.paths.train_csv)
@@ -122,7 +137,7 @@ def main():
         lookahead=CFG.label_generation.direction_lookahead
     )
 
-    logging.info("📈 Генерируем Amplitude метки...")
+    logging.info("📈 Генерируем Amplitude метки (ускоренная версия)...")
     amp_labels = generate_amplitude_labels(
         df,
         lookahead=CFG.label_generation.amplitude_lookahead
@@ -162,7 +177,7 @@ def main():
     scaler.fit(df_features[feature_cols])
 
     joblib.dump(scaler, CFG.paths.scaler_path)
-    pd.Series(feature_cols).to_csv(CFG.paths.feature_columns_path, index=False)
+    joblib.dump(feature_cols, CFG.paths.feature_columns_path)
 
     logging.info("✅ Сохранили scaler и feature_columns.")
 

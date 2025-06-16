@@ -50,8 +50,9 @@ class CFG:
         lr = 1e-3
         batch_size = 1024
         epochs = 50
-        early_stopping_patience = 10
+        early_stopping_patience = 30
         device = "cuda"  # или "cpu"
+        val_size = 0.1
 
     class label_generation:
         direction_lookahead = 10  # в свечах

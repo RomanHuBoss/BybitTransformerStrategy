@@ -1,100 +1,90 @@
+import pandas as pd
 import numpy as np
-import torch
 import joblib
-
-from feature_engineering import FeatureEngineer
+import torch
+import torch.nn.functional as F
 from model import DirectionalModel, AmplitudeModel, HitOrderClassifier
 from config import CFG
 
 class HybridPredictor:
     def __init__(self):
-        self.feature_engineer = FeatureEngineer()
-        self.feature_engineer.scaler = joblib.load(CFG.paths.scaler_path)
-        self.feature_engineer.feature_columns = joblib.load(CFG.paths.feature_columns_path)
+        # Загружаем scaler и список feature columns
+        self.scaler = joblib.load(CFG.paths.scaler_path)
+        self.feature_columns = joblib.load(CFG.paths.feature_columns_path)
 
-        input_dim = len(self.feature_engineer.feature_columns)
-        model_cfg = CFG.ModelConfig()
-        model_cfg.input_dim = input_dim
-
-        self.direction_model = DirectionalModel(model_cfg)
-        self.direction_model.load_state_dict(torch.load(CFG.paths.direction_model_path))
-        self.direction_model.eval()
-
-        self.amplitude_model = AmplitudeModel(input_size=input_dim)
-        self.amplitude_model.load_state_dict(torch.load(CFG.paths.amplitude_model_path))
-        self.amplitude_model.eval()
-
-        self.hit_order_model = HitOrderClassifier(input_size=input_dim)
-        self.hit_order_model.load_state_dict(torch.load(CFG.paths.hit_order_model_path))
-        self.hit_order_model.eval()
-
+        # Загружаем temperature
         self.temperature = joblib.load(CFG.paths.temperature_path)
-        self._validate_model_dimensions()
 
-    def _validate_model_dimensions(self):
-        feature_dim = len(self.feature_engineer.feature_columns)
-        assert self.direction_model.input_proj.in_features == feature_dim
-        assert self.amplitude_model.shared[0].in_features == feature_dim
-        assert self.hit_order_model.net[0].in_features == feature_dim
-        print("[HybridPredictor] Все модели успешно валидированы по размерностям.")
+        # Загружаем модели
+        self.direction_model = self._load_direction_model()
+        self.amplitude_model = self._load_amplitude_model()
+        self.hitorder_model = self._load_hitorder_model()
 
-    def predict(self, df):
-        features = self.feature_engineer.generate_features(df, fit=False)
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        window_size = CFG.train.direction_window_size
-        X_input = features.iloc[-window_size:].values.astype(np.float32)
-        X_tensor = torch.tensor(X_input).unsqueeze(0)
+    def _load_direction_model(self):
+        model_cfg = CFG.ModelConfig()
+        model_cfg.input_dim = len(self.feature_columns)
+        model = DirectionalModel(model_cfg)
+        model.load_state_dict(torch.load(CFG.paths.direction_model_path, map_location="cpu"))
+        model.eval()
+        return model
 
-        X_flat_input = features.iloc[-1:].values.astype(np.float32)
-        X_flat_tensor = torch.tensor(X_flat_input)
+    def _load_amplitude_model(self):
+        model = AmplitudeModel(input_size=len(self.feature_columns))
+        model.load_state_dict(torch.load(CFG.paths.amplitude_model_path, map_location="cpu"))
+        model.eval()
+        return model
 
+    def _load_hitorder_model(self):
+        model = HitOrderClassifier(input_size=len(self.feature_columns))
+        model.load_state_dict(torch.load(CFG.paths.hit_order_model_path, map_location="cpu"))
+        model.eval()
+        return model
+
+    def preprocess(self, df_live):
+        """
+        Предобработка данных перед инференсом
+        """
+        features = df_live[self.feature_columns].copy()
+        features_scaled = self.scaler.transform(features)
+        return torch.tensor(features_scaled, dtype=torch.float32)
+
+    def predict(self, df_live):
+        """
+        df_live — DataFrame c уже рассчитанными полными признаками.
+        """
+
+        # Предобработка
+        X = self.preprocess(df_live)
+
+        # Инференс Direction
         with torch.no_grad():
-            logits = self.direction_model(X_tensor).numpy() / self.temperature
-            probs = self.softmax(logits)
-            final_class = int(np.argmax(probs))
-            confidence = float(probs[0, final_class])  # просто сохраняем для UI
+            logits = self.direction_model(X.unsqueeze(0))
+            logits_np = logits.numpy() / self.temperature
+            probs = F.softmax(torch.tensor(logits_np), dim=1).numpy()[0]
 
-            up_p10_pred, up_p90_pred, down_p10_pred, down_p90_pred = self.amplitude_model(X_flat_tensor)
-            up_p10 = up_p10_pred.item()
-            up_p90 = up_p90_pred.item()
-            down_p10 = down_p10_pred.item()
-            down_p90 = down_p90_pred.item()
+            pred_direction = int(np.argmax(probs))
+            confidence = float(np.max(probs))
 
-            amplitude_pred = max(up_p90, down_p90)
-            amplitude_spread = max(up_p90 - up_p10, down_p90 - down_p10)
+        # Инференс Amplitude
+        with torch.no_grad():
+            up_p10, up_p90, down_p10, down_p90 = self.amplitude_model(X)
+            amplitude = {
+                "up_p10": float(up_p10.item()),
+                "up_p90": float(up_p90.item()),
+                "down_p10": float(down_p10.item()),
+                "down_p90": float(down_p90.item()),
+            }
 
-            hit_order_prob = self.hit_order_model(X_flat_tensor).item()
-
-        hit_order_class = int(hit_order_prob >= 0.5)
-
-        tp = max(up_p90, 0.001)
-        sl_raw = max(down_p90, 0.001)
-        min_sl_value = CFG.labels.sl_min
-        sl = max(sl_raw, min_sl_value)
-        rr = tp / sl if sl > 0 else 0.0
-        rr = max(0.0, min(rr, 50.0))
-
-        # === Финальный risk-фильтр: теперь БЕЗ confidence ===
-        if rr < 2.0 or sl > 0.02 or amplitude_pred < 0.005:
-            return None
+        # Инференс HitOrder
+        with torch.no_grad():
+            logit_hit = self.hitorder_model(X)
+            prob_hit = torch.sigmoid(logit_hit).item()
 
         return {
-            "final_class": final_class,
-            "final_confidence": confidence,
-            "predicted_up_p10": float(up_p10),
-            "predicted_up_p90": float(up_p90),
-            "predicted_down_p10": float(down_p10),
-            "predicted_down_p90": float(down_p90),
-            "predicted_amplitude": float(amplitude_pred),
-            "amplitude_spread": float(amplitude_spread),
-            "hit_order_prob": float(hit_order_prob),
-            "hit_order": hit_order_class,
-            "tp": float(tp),
-            "sl": float(sl),
-            "rr": float(rr)
+            "direction": pred_direction,
+            "confidence": confidence,
+            "amplitude": amplitude,
+            "hitorder_prob": prob_hit
         }
-
-    @staticmethod
-    def softmax(x):
-        e_x = np.exp(x - np.max(x, axis=1, keepdims=True))
-        return e_x / e_x.sum(axis=1, keepdims=True)

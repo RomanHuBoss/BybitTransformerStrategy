@@ -4,36 +4,32 @@ import torch
 from torch.utils.data import Dataset
 from config import CFG
 
-# === Унифицированные функции загрузки данных ===
+# === Универсальная загрузка полного датафрейма ===
+
+def load_full_dataframe():
+    return pd.read_csv(CFG.paths.train_features_csv)
+
+# === Разделение признаков и лейблов ===
 
 def load_train_features():
-    """Загрузка признаков для всех моделей"""
-    return pd.read_csv(CFG.paths.train_features_csv).values
+    df = load_full_dataframe()
+    feature_cols = df.columns.difference([
+        'direction_label',
+        'amp_up_p10', 'amp_up_p90', 'amp_down_p10', 'amp_down_p90'
+    ])
+    return df[feature_cols].values
 
 def load_train_labels_direction():
-    """Загрузка меток для Direction модели"""
-    return np.load(CFG.paths.train_labels_direction)
+    df = load_full_dataframe()
+    return df['direction_label'].values
 
 def load_train_labels_amplitude():
-    """Загрузка меток для Amplitude модели"""
-    return np.load(CFG.paths.train_labels_amplitude)
+    df = load_full_dataframe()
+    return df[['amp_up_p10', 'amp_up_p90', 'amp_down_p10', 'amp_down_p90']].values
 
-def load_train_labels_hitorder():
-    """
-    Загрузка меток для HitOrder модели.
-    Возвращаем отдельно параметры сделки и таргет (hit).
-    """
-    data = np.load(CFG.paths.train_labels_hitorder)
-    sl_tp = data[:, 1:3]   # [sl_relative, tp_relative]
-    hit = data[:, 3]       # binary target
-    return sl_tp, hit
-
-# === PyTorch Dataset для Direction модели (последовательности) ===
+# === Direction Dataset (последовательный) ===
 
 class SequenceDataset(Dataset):
-    """
-    Датасет для Direction модели (последовательный input)
-    """
     def __init__(self, X, y, window_size):
         self.X = X
         self.y = y
@@ -47,12 +43,9 @@ class SequenceDataset(Dataset):
         y_label = self.y[idx + self.window_size - 1]
         return torch.tensor(X_seq, dtype=torch.float32), torch.tensor(y_label, dtype=torch.long)
 
-# === PyTorch Dataset для Amplitude модели (регрессия) ===
+# === Amplitude Dataset (регрессия) ===
 
 class AmplitudeDataset(Dataset):
-    """
-    Датасет для Amplitude модели (регрессия)
-    """
     def __init__(self, X, y):
         self.X = torch.tensor(X, dtype=torch.float32)
         self.y = torch.tensor(y, dtype=torch.float32)
@@ -62,21 +55,3 @@ class AmplitudeDataset(Dataset):
 
     def __getitem__(self, idx):
         return self.X[idx], self.y[idx]
-
-# === Новый PyTorch Dataset для HitOrder модели (с доп. фичами SL/TP) ===
-
-class HitOrderDataset(Dataset):
-    """
-    Датасет для HitOrder модели (табличные фичи + sl/tp параметры)
-    """
-    def __init__(self, X, sl_tp, hit):
-        self.X = torch.tensor(X, dtype=torch.float32)
-        self.sl_tp = torch.tensor(sl_tp, dtype=torch.float32)  # (sl_relative, tp_relative)
-        self.y = torch.tensor(hit, dtype=torch.float32)
-
-    def __len__(self):
-        return len(self.X)
-
-    def __getitem__(self, idx):
-        features_full = torch.cat([self.X[idx], self.sl_tp[idx]], dim=0)
-        return features_full, self.y[idx]

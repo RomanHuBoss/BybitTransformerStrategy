@@ -2,28 +2,17 @@ from pathlib import Path
 
 class CFG:
 
-    # Пути к данным и моделям
     class paths:
         base = Path("./")
         train_csv = base / "historical_data" / "LEARN" / "combined_csv.csv"
-
-        # новые файлы:
         train_features_csv = base / "artifacts" / "model_30m" / "train_features.csv"
-        train_labels_direction = base / "artifacts" / "model_30m" / "train_labels_direction.npy"
-        train_labels_amplitude = base / "artifacts" / "model_30m" / "train_labels_amplitude.npy"
-        train_labels_hitorder = base / "artifacts" / "model_30m" / "train_labels_hitorder.npy"
-
         scaler_path = base / "artifacts" / "model_30m" / "direction_scaler.joblib"
-
         direction_model_path = base / "artifacts" / "model_30m" / "direction_model.pth"
         amplitude_model_path = base / "artifacts" / "model_30m" / "amplitude_model.pth"
         hit_order_model_path = base / "artifacts" / "model_30m" / "hit_order_model.pth"
-
         temperature_path = base / "artifacts" / "model_30m" / "temperature.joblib"
         feature_columns_path = base / "artifacts" / "model_30m" / "features.joblib"
 
-
-    # Параметры обучения (общие для direction и amplitude)
     class train:
         lr = 3e-4
         batch_size = 512
@@ -32,24 +21,20 @@ class CFG:
         val_size = 0.1
         focal_gamma = 2.0
 
-    # Параметры инференса
     class inference:
-        update_interval = 120  # секунд между обновлениями snapshot
+        update_interval = 120
         api_port = 8000
 
-    # Параметры актива и данных
     class assets:
         symbols = ["BTCUSDT", "ETHUSDT", "XRPUSDT", "SOLUSDT"]
         timeframe = 30
         limit = 1000
 
-    # Параметры hybrid логики
     class hybrid:
-        min_amplitude = 0.002  # минимальный предсказанный amplitude для фильтрации
-        spread_threshold = 0.05  # порог ширины интервала (spread) для входа
-        dynamic_threshold_alpha = 1.0  # коэффициент динамической корректировки threshold в зависимости от spread
+        min_amplitude = 0.002
+        spread_threshold = 0.05
+        dynamic_threshold_alpha = 1.0
 
-    # Параметры label генерации
     class labels:
         lookahead = 10
         rr_min = 2
@@ -59,29 +44,22 @@ class CFG:
 
     class label_generation:
         direction_threshold = 0.015
-
         amplitude_min_sl = 0.005
         amplitude_max_sl = 0.02
         amplitude_max_tp = 0.15
-
-        # параметры под HitOrder
-        hit_order_sl_min = 0.005  # 0.5% минимальный SL
-        hit_order_sl_max = 0.02  # 2% максимальный SL
-        hit_order_rr_min = 2.0  # минимальный RR
-        hit_order_rr_max = 6.0  # максимальный RR
-
-        # новые параметры сетки (добавляем сюда)
+        hit_order_sl_min = 0.005
+        hit_order_sl_max = 0.02
+        hit_order_rr_min = 2.0
+        hit_order_rr_max = 6.0
         hit_order_sl_step = 0.005
         hit_order_rr_step = 0.5
 
-    # Режимы генерации признаков
     class feature_engineering:
-        default_shift = 1  # смещение меток
-        window_size = 30  # окно
+        default_shift = 1
+        window_size = 30
 
-    # Параметры сохранения генератора
     class snapshot:
-        history_depth = 100  # глубина хранения snapshot для бэктестинга
+        history_depth = 100
 
     class action2label:
         mapping = {
@@ -95,7 +73,7 @@ class CFG:
         loss_weights = [0.4, 0.1, 0.4, 0.1]
 
     class ModelConfig:
-        input_dim = None  # обязательно задаётся позже (динамически)
+        input_dim = None
         hidden_dim = 128
         n_layers = 2
         n_heads = 4

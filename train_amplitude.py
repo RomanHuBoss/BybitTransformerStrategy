@@ -2,7 +2,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import joblib
 import logging
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
@@ -12,42 +11,34 @@ from model import AmplitudeModel
 from losses import AmplitudeLoss
 from config import CFG
 
-# Логгинг
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [INFO] %(message)s')
 
-# Устройство
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-logging.info(f"Используемое устройство: {device}")
+logging.info(f"⚡ Работаем на устройстве: {device}")
 
-# === Загрузка данных ===
 logging.info("🚀 Загружаем признаки и амплитудные метки...")
 X = load_train_features()
-y = load_train_labels_amplitude()  # без логарифма
+y = load_train_labels_amplitude()
 
-# Трейн/валидация сплит
+# Разделяем train/val
 X_train, X_val, y_train, y_val = train_test_split(
     X, y, test_size=CFG.train.val_size, shuffle=False
 )
 
-# Датасеты и лоадеры
 train_dataset = AmplitudeDataset(X_train, y_train)
 val_dataset = AmplitudeDataset(X_val, y_val)
 
 train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=CFG.train.batch_size, shuffle=True)
 val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=CFG.train.batch_size)
 
-# === Модель ===
 model = AmplitudeModel(input_size=X.shape[1]).to(device)
-
-# Лосс с весами из конфигурации
 loss_fn = AmplitudeLoss(weights=CFG.amplitude.loss_weights, device=device)
 optimizer = optim.AdamW(model.parameters(), lr=CFG.train.lr)
 
-# Early stopping
 best_val_loss = np.inf
 patience_counter = 0
 
-logging.info("🧮 Начинаем обучение амплитудной модели...")
+logging.info("🧮 Запуск обучения Amplitude модели...")
 
 for epoch in range(1, CFG.train.epochs + 1):
     model.train()
@@ -75,7 +66,7 @@ for epoch in range(1, CFG.train.epochs + 1):
     avg_train_loss = np.mean(train_losses)
     avg_val_loss = np.mean(val_losses)
 
-    logging.info(f"📊 Эпоха {epoch}: Train Loss {avg_train_loss:.6f}, Val Loss {avg_val_loss:.6f}")
+    logging.info(f"📊 Эпоха {epoch}: Train Loss={avg_train_loss:.6f} | Val Loss={avg_val_loss:.6f}")
 
     if avg_val_loss < best_val_loss - 1e-6:
         best_val_loss = avg_val_loss
@@ -85,7 +76,7 @@ for epoch in range(1, CFG.train.epochs + 1):
     else:
         patience_counter += 1
         if patience_counter >= CFG.train.early_stopping_patience:
-            logging.info("⏸ Ранняя остановка: прогресс замедлился.")
+            logging.info("⏸ Early stopping — остановка обучения.")
             break
 
-logging.info("✅ Обучение амплитудной модели завершено.")
+logging.info("✅ Обучение Amplitude модели завершено.")

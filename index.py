@@ -1,26 +1,16 @@
 import asyncio
-import logging
-
-from anyio import sleep
+import json
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from contextlib import asynccontextmanager
-from starlette.websockets import WebSocketDisconnect
 import uvicorn
+
 from snapshot_inference import SnapshotInference
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+app = FastAPI()
 
-snapshot_engine = SnapshotInference()
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    await snapshot_engine.preload_snapshot()
-    yield
-
-app = FastAPI(lifespan=lifespan)
-
+# Разрешаем CORS (можно ограничить при продакшн-деплое)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -29,21 +19,37 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.mount("/static", StaticFiles(directory="static", html=True), name="static")
+# Монтируем директорию со статиками
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
+# Отдаём HTML страницу
+@app.get("/")
+async def get():
+    with open("index.html", "r", encoding="utf-8") as f:
+        html_content = f.read()
+    return HTMLResponse(content=html_content)
+
+# Инференс-объект
+snapshot_inference = SnapshotInference()
+
+# Запуск фоновой задачи обновления snapshot при старте сервера
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(snapshot_inference.preload_snapshot())
+
+# WebSocket endpoint
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     try:
         while True:
-            snapshot = dict(list(snapshot_engine.snapshot.items()))
-            await websocket.send_json(snapshot)
-            await asyncio.sleep(1)
-    except WebSocketDisconnect:
-        logging.info("WebSocket client disconnected.")
+            await websocket.receive_text()
+            snapshot = snapshot_inference.snapshot
+            response = json.dumps(snapshot)
+            await websocket.send_text(response)
+    except Exception as e:
+        print(f"WebSocket closed: {e}")
 
-
-
+# Запуск сервера uvicorn
 if __name__ == "__main__":
     uvicorn.run("index:app", host="0.0.0.0", port=8000, reload=False)
-    sleep(1000)

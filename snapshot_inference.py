@@ -2,6 +2,7 @@ import asyncio
 import logging
 from asyncio import Semaphore
 from hybrid_predictor import HybridPredictor
+from feature_engineering import FeatureEngineer
 from services.bybit_symbols_list import BybitSymbolsList
 from services.get_bybit_candles import get_bybit_candles
 from services.bybit_candles_handlers import bybit_candles_to_df, filter_closed_bars
@@ -11,6 +12,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 class SnapshotInference:
     def __init__(self):
         self.predictor = HybridPredictor()
+        self.feature_engineer = FeatureEngineer()  # новый шаг — динамический генератор фичей
         self.symbol_provider = BybitSymbolsList()
         self.symbols_all = self.symbol_provider.get_bybit_symbols_list(limit=1000)
         self.max_symbols = 300
@@ -24,10 +26,10 @@ class SnapshotInference:
     async def update_snapshot_loop(self):
         while True:
             await self.incremental_update()
-            await asyncio.sleep(1)  # пауза между итерациями
+            await asyncio.sleep(1)
 
     async def incremental_update(self):
-        batch_size = 15  # обновляем по 15 символов за раз
+        batch_size = 15
         end_pointer = min(self.symbol_pointer + batch_size, len(self.symbols_all))
         batch_symbols = self.symbols_all[self.symbol_pointer:end_pointer]
 
@@ -50,8 +52,13 @@ class SnapshotInference:
                     logging.warning(f"Недостаточно свечей для {symbol}")
                     return (symbol, None)
 
-                result = self.predictor.predict(df)
+                # Генерируем фичи на основе live OHLCV
+                features_df = self.feature_engineer.generate_features(df, fit=False)
+
+                # Предсказываем на последней строке
+                result = self.predictor.predict(features_df.tail(1))
                 return (symbol, result)
+
             except Exception as e:
                 logging.error(f"Ошибка обработки {symbol}: {e}")
                 return (symbol, None)

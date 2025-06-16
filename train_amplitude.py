@@ -7,7 +7,7 @@ from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
 from dataset import load_train_features, load_train_labels_amplitude, AmplitudeDataset
-from model import AmplitudeModel
+from model import AmplitudeRegressor
 from losses import AmplitudeLoss
 from config import CFG
 
@@ -31,7 +31,7 @@ val_dataset = AmplitudeDataset(X_val, y_val)
 train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=CFG.train.batch_size, shuffle=True)
 val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=CFG.train.batch_size)
 
-model = AmplitudeModel(input_size=X.shape[1]).to(device)
+model = AmplitudeRegressor(input_size=X.shape[1]).to(device)
 loss_fn = AmplitudeLoss(weights=CFG.amplitude.loss_weights, device=device)
 optimizer = optim.AdamW(model.parameters(), lr=CFG.train.lr)
 

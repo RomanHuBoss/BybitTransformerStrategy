@@ -1,111 +1,112 @@
 import pandas as pd
 import numpy as np
 import joblib
-import logging
-import os
-from sklearn.preprocessing import StandardScaler
-from config import CFG
 from feature_engineering import FeatureEngineer
+from config import CFG
+from sklearn.preprocessing import StandardScaler
+import os
+import logging
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
-# Direction разметка (осталась прежней)
-def generate_direction_labels(df, threshold, lookahead):
-    closes = df["close"].values
-    future_closes = np.roll(closes, -lookahead)
-    changes = (future_closes - closes) / closes
-    changes[-lookahead:] = 0  # хвост
+# Direction лейблинг
+def generate_direction_labels(df, lookahead, threshold):
+    labels = []
+    close_prices = df["close"].values
 
-    labels = np.full(len(df), 1)
-    labels[changes > threshold] = 2
-    labels[changes < -threshold] = 0
-    return labels.tolist()
+    for i in range(len(df)):
+        if i + lookahead >= len(df):
+            labels.append(2)  # боковик
+            continue
 
+        future_close = close_prices[i + lookahead]
+        ret = (future_close - close_prices[i]) / close_prices[i]
 
-# Ускоренная Amplitude разметка
+        if ret > threshold:
+            labels.append(1)
+        elif ret < -threshold:
+            labels.append(0)
+        else:
+            labels.append(2)
+
+    return labels
+
+# Amplitude лейблинг (ускоренная версия)
 def generate_amplitude_labels(df, lookahead):
     highs = df['high'].values
     lows = df['low'].values
-    closes = df['close'].values
 
-    n = len(df)
-    amp_up_p10, amp_up_p90 = [], []
-    amp_down_p10, amp_down_p90 = [], []
+    up_moves = []
+    down_moves = []
 
-    for i in range(n):
+    for i in range(len(df)):
         window_highs = highs[i+1:i+1+lookahead]
         window_lows = lows[i+1:i+1+lookahead]
 
-        if len(window_highs) < lookahead:
-            amp_up_p10.append(0)
-            amp_up_p90.append(0)
-            amp_down_p10.append(0)
-            amp_down_p90.append(0)
+        if len(window_highs) == 0:
+            up_moves.append(np.nan)
+            down_moves.append(np.nan)
             continue
 
-        up_moves = (window_highs - closes[i]) / closes[i]
-        down_moves = (closes[i] - window_lows) / closes[i]
+        base_price = df['close'].iloc[i]
+        ups = (window_highs - base_price) / base_price
+        downs = (window_lows - base_price) / base_price
 
-        amp_up_p10.append(np.quantile(up_moves, 0.1))
-        amp_up_p90.append(np.quantile(up_moves, 0.9))
-        amp_down_p10.append(np.quantile(down_moves, 0.1))
-        amp_down_p90.append(np.quantile(down_moves, 0.9))
+        up_moves.append(ups)
+        down_moves.append(downs)
+
+    up_p10 = [np.percentile(m, 10) if isinstance(m, np.ndarray) and len(m) > 0 else 0 for m in up_moves]
+    up_p90 = [np.percentile(m, 90) if isinstance(m, np.ndarray) and len(m) > 0 else 0 for m in up_moves]
+    down_p10 = [np.percentile(m, 10) if isinstance(m, np.ndarray) and len(m) > 0 else 0 for m in down_moves]
+    down_p90 = [np.percentile(m, 90) if isinstance(m, np.ndarray) and len(m) > 0 else 0 for m in down_moves]
 
     return pd.DataFrame({
-        'amp_up_p10': amp_up_p10,
-        'amp_up_p90': amp_up_p90,
-        'amp_down_p10': amp_down_p10,
-        'amp_down_p90': amp_down_p90
+        "amp_up_p10": up_p10,
+        "amp_up_p90": up_p90,
+        "amp_down_p10": down_p10,
+        "amp_down_p90": down_p90
     })
 
-
-# HitOrder разметка (ускоренная и проверенная)
+# HitOrder лейблинг (ускоренная версия)
 def generate_hitorder_labels(df, sl_list, rr_list, lookahead):
-    result = {}
+    close_prices = df['close'].values
+    highs = df['high'].values
+    lows = df['low'].values
 
-    highs = df["high"].values
-    lows = df["low"].values
-    closes = df["close"].values
-    n = len(df)
+    hit_labels = {}
 
     for sl in sl_list:
         for rr in rr_list:
-            column_name = f"hit_SL{sl}_RR{rr}"
-            labels = np.zeros(n, dtype=int)
+            label_col = f"hit_SL{str(sl).replace('.', '_')}_RR{str(rr).replace('.', '_')}"
+            hit_labels[label_col] = []
 
-            tp_prices = closes * (1 + rr * sl)
-            sl_prices = closes * (1 - sl)
+    for i in range(len(df)):
+        if i + lookahead >= len(df):
+            for label_col in hit_labels:
+                hit_labels[label_col].append(0)
+            continue
 
-            for i in range(n):
-                start_idx = i + 1
-                end_idx = i + 1 + lookahead
+        future_highs = highs[i+1:i+1+lookahead]
+        future_lows = lows[i+1:i+1+lookahead]
+        entry_price = close_prices[i]
 
-                if end_idx >= n:
-                    labels[i] = 0
-                    continue
+        for sl in sl_list:
+            for rr in rr_list:
+                sl_threshold = entry_price * (1 - sl)
+                tp_threshold = entry_price * (1 + sl * rr)
 
-                high_window = highs[start_idx:end_idx]
-                low_window = lows[start_idx:end_idx]
+                hit_sl = np.any(future_lows <= sl_threshold)
+                hit_tp = np.any(future_highs >= tp_threshold)
 
-                hit_tp = high_window >= tp_prices[i]
-                hit_sl = low_window <= sl_prices[i]
+                label_col = f"hit_SL{str(sl).replace('.', '_')}_RR{str(rr).replace('.', '_')}"
+                hit_labels[label_col].append(1 if hit_tp and not hit_sl else 0)
 
-                first_tp = np.argmax(hit_tp) if np.any(hit_tp) else lookahead + 1
-                first_sl = np.argmax(hit_sl) if np.any(hit_sl) else lookahead + 1
+    return pd.DataFrame(hit_labels)
 
-                labels[i] = 1 if first_tp < first_sl else 0
-
-            result[column_name] = labels
-
-    for col, values in result.items():
-        df[col] = values
-
-    return df
-
-
+# Основной пайплайн
 def main():
     logging.info("🚀 Загружаем исходные данные...")
-    df = pd.read_csv(CFG.paths.train_csv)
+    df = pd.read_csv(CFG.paths.data_path)
     logging.info(f"✅ Загружено {len(df)} строк")
 
     logging.info("🧪 Генерируем признаки...")
@@ -113,59 +114,46 @@ def main():
     df_features = fe.generate_features(df, fit=True)
     logging.info(f"✅ Сгенерировано признаков: {df_features.shape[1]}")
 
-    df = df.tail(len(df_features)).reset_index(drop=True)
-    df_features = df_features.reset_index(drop=True)
-
     logging.info("🏷 Генерируем Direction метки...")
     df_features['direction_label'] = generate_direction_labels(
-        df,
-        threshold=CFG.label_generation.direction_threshold,
-        lookahead=CFG.label_generation.direction_lookahead
+        df_features,
+        lookahead=CFG.label.lookahead,
+        threshold=CFG.label.direction_threshold
     )
 
     logging.info("📈 Генерируем Amplitude метки (ускоренная версия)...")
     amp_labels = generate_amplitude_labels(
-        df,
-        lookahead=CFG.label_generation.amplitude_lookahead
+        df_features,
+        lookahead=CFG.label.lookahead
     )
     df_features = pd.concat([df_features, amp_labels], axis=1)
 
     logging.info("🎯 Генерируем HitOrder метки (ускоренная версия)...")
-    df_features = generate_hitorder_labels(
-        df,
+    hit_labels = generate_hitorder_labels(
+        df_features,
         sl_list=CFG.label_generation.hitorder_sl_list,
         rr_list=CFG.label_generation.hitorder_rr_list,
         lookahead=CFG.label_generation.hitorder_lookahead
     )
+    df_features = pd.concat([df_features, hit_labels], axis=1)
 
     df_features.dropna(inplace=True)
-    df_features.reset_index(drop=True, inplace=True)
     logging.info(f"💾 Сохраняем итоговый датасет: {len(df_features)} строк")
-    df_features.to_csv(CFG.paths.train_features_csv, index=False)
+
+    df_features.to_parquet(CFG.paths.feature_dataset_path, index=False)
 
     logging.info("⚙️ Обучаем scaler и сохраняем признаки...")
-
-    non_feature_cols = [
-        'open_time', 'close_time', 'timestamp', 'date', 'symbol',
-        'quote_volume', 'count', 'taker_buy_volume', 'taker_buy_quote_volume', 'ignore'
-    ]
-
-    non_label_cols = ['direction_label'] + [
-        col for col in df_features.columns if col.startswith("amp_") or col.startswith("hit_SL")
-    ]
-
-    feature_cols = [
-        col for col in df_features.columns
-        if col not in (non_feature_cols + non_label_cols)
-    ]
+    feature_cols = [col for col in df_features.columns if col not in [
+        "direction_label", "amp_up_p10", "amp_up_p90", "amp_down_p10", "amp_down_p90"
+    ] and not col.startswith("hit_SL") and col not in [
+        "open_time", "close_time", "quote_volume", "count", "taker_buy_volume", "taker_buy_quote_volume", "ignore"]]
 
     scaler = StandardScaler()
     scaler.fit(df_features[feature_cols])
 
     joblib.dump(scaler, CFG.paths.scaler_path)
     joblib.dump(feature_cols, CFG.paths.feature_columns_path)
-
-    logging.info("✅ Сохранили scaler и feature_columns.")
+    logging.info("✅ Готово")
 
 if __name__ == "__main__":
     main()

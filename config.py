@@ -14,6 +14,9 @@ class CFG:
         feature_columns_path = base / "artifacts" / "model_30m" / "features.joblib"
         models_dir = base / "artifacts" / "model_30m"
 
+        data_path = train_csv  # или укажи путь если другой файл
+        feature_dataset_path = base / "artifacts" / "model_30m" / "full_dataset.parquet"
+
     class train:
         lr = 3e-4
         batch_size = 512
@@ -48,6 +51,7 @@ class CFG:
         batch_size = 1024
         epochs = 50
         early_stopping_patience = 10
+        device = "cuda"  # или "cpu"
 
     class label_generation:
         direction_lookahead = 10  # в свечах

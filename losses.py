@@ -29,6 +29,24 @@ class CostSensitiveFocalLoss(nn.Module):
         return focal_loss.mean()
 
 
+# === Binary HitOrder Focal Loss ===
+
+class FocalLoss(nn.Module):
+    """
+    Focal Loss для бинарной классификации (hit-order).
+    """
+    def __init__(self, alpha=1.0, gamma=2.0):
+        super().__init__()
+        self.alpha = alpha
+        self.gamma = gamma
+
+    def forward(self, logits, targets):
+        bce_loss = F.binary_cross_entropy_with_logits(logits, targets, reduction='none')
+        pt = torch.exp(-bce_loss)
+        focal_loss = self.alpha * (1 - pt) ** self.gamma * bce_loss
+        return focal_loss.mean()
+
+
 # === Amplitude Loss ===
 
 class QuantileLoss(nn.Module):

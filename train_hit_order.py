@@ -1,97 +1,108 @@
 import pandas as pd
 import numpy as np
 import torch
-import joblib
-import logging
+from torch import nn
+from torch.utils.data import Dataset, DataLoader
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, balanced_accuracy_score, f1_score
+import joblib
+import os
+import logging
+
 from config import CFG
 from model import HitOrderClassifier
-import os
+from losses import FocalLoss
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
-# Гиперпараметры из конфига
-EPOCHS = CFG.hitorder.epochs
-BATCH_SIZE = CFG.hitorder.batch_size
-LR = CFG.hitorder.lr
+# Датасет
+class HitOrderDataset(Dataset):
+    def __init__(self, X, y):
+        self.X = torch.tensor(X, dtype=torch.float32)
+        self.y = torch.tensor(y, dtype=torch.float32)
 
-# Загрузка данных
-logging.info("🚀 Загружаем признаки...")
-df = pd.read_csv(CFG.paths.train_features_csv)
+    def __len__(self):
+        return len(self.X)
 
-# Загрузка feature_columns — строго то же, что использовалось при обучении scaler!
-feature_cols = joblib.load(CFG.paths.feature_columns_path)
-scaler = joblib.load(CFG.paths.scaler_path)
+    def __getitem__(self, idx):
+        return self.X[idx], self.y[idx]
 
-# Подготовка нормализованных признаков
-X = df[feature_cols]
-X_scaled = scaler.transform(X)
+# Тренировка одного профиля
+def train_one_profile(df, profile, feature_cols):
+    sl, rr = profile
+    label_col = f"hit_SL{str(sl).replace('.', '_')}_RR{str(rr).replace('.', '_')}"
+    if label_col not in df.columns:
+        logging.warning(f"Пропускаем профиль {label_col}, колонка отсутствует.")
+        return
 
-# Берём все hitorder профили
-hit_cols = [col for col in df.columns if col.startswith("hit_SL")]
+    logging.info(f"\n🚀 Обучаем профиль: {label_col}")
 
-# Обучаем по каждому профилю
-for profile_column in hit_cols:
-    logging.info(f"\n🚀 Обучаем профиль: {profile_column}")
-    y = df[profile_column].values
+    X = df[feature_cols].values
+    y = df[label_col].values
 
-    pos_frac = np.mean(y)
-    pos_weight = (len(y) - np.sum(y)) / np.sum(y)
-    logging.info(f"✅ Баланс классов: POS={np.sum(y)}, NEG={len(y)-np.sum(y)}, POS%={pos_frac*100:.3f}%")
+    X_train, X_val, y_train, y_val = train_test_split(
+        X, y, test_size=CFG.hitorder.val_size, random_state=42
+    )
+
+    train_ds = HitOrderDataset(X_train, y_train)
+    val_ds = HitOrderDataset(X_val, y_val)
+
+    train_loader = DataLoader(train_ds, batch_size=CFG.hitorder.batch_size, shuffle=True)
+    val_loader = DataLoader(val_ds, batch_size=CFG.hitorder.batch_size, shuffle=False)
+
+    model = HitOrderClassifier(input_dim=X.shape[1]).to(CFG.hitorder.device)
+    criterion = FocalLoss(gamma=CFG.train.focal_gamma)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=CFG.hitorder.lr)
+    best_val_loss = float('inf')
+
+    pos_weight = (len(y) - y.sum()) / y.sum()
+    logging.info(f"✅ Баланс классов: POS={int(y.sum())}, NEG={int(len(y) - y.sum())}, POS%={y.mean() * 100:.3f}%")
     logging.info(f"⚖️ Расчетный pos_weight: {pos_weight:.4f}")
 
-    # Разделяем на train/val
-    X_train, X_val, y_train, y_val = train_test_split(X_scaled, y, test_size=CFG.train.val_size, shuffle=False)
-
-    train_data = torch.utils.data.TensorDataset(torch.tensor(X_train, dtype=torch.float32), torch.tensor(y_train, dtype=torch.float32))
-    val_data = torch.utils.data.TensorDataset(torch.tensor(X_val, dtype=torch.float32), torch.tensor(y_val, dtype=torch.float32))
-
-    train_loader = torch.utils.data.DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True)
-    val_loader = torch.utils.data.DataLoader(val_data, batch_size=BATCH_SIZE)
-
-    model = HitOrderClassifier(input_dim=X_train.shape[1])
-    optimizer = torch.optim.AdamW(model.parameters(), lr=LR)
-    criterion = torch.nn.BCEWithLogitsLoss(pos_weight=torch.tensor(pos_weight))
-
-    best_val_loss = np.inf
-
-    for epoch in range(1, EPOCHS + 1):
+    for epoch in range(CFG.hitorder.epochs):
         model.train()
-        total_train_loss = 0
+        train_losses = []
+
         for xb, yb in train_loader:
+            xb, yb = xb.to(CFG.hitorder.device), yb.to(CFG.hitorder.device)
             optimizer.zero_grad()
-            logits = model(xb).squeeze()
-            loss = criterion(logits, yb)
+            out = model(xb).squeeze()
+            loss = criterion(out, yb)
             loss.backward()
             optimizer.step()
-            total_train_loss += loss.item() * xb.size(0)
-        train_loss = total_train_loss / len(train_loader.dataset)
+            train_losses.append(loss.item())
 
         model.eval()
-        total_val_loss = 0
-        val_preds = []
-        val_true = []
+        val_losses, preds, targets = [], [], []
+
         with torch.no_grad():
             for xb, yb in val_loader:
-                logits = model(xb).squeeze()
-                loss = criterion(logits, yb)
-                total_val_loss += loss.item() * xb.size(0)
-                preds = (torch.sigmoid(logits) > 0.5).cpu().numpy()
-                val_preds.extend(preds)
-                val_true.extend(yb.cpu().numpy())
-        val_loss = total_val_loss / len(val_loader.dataset)
+                xb, yb = xb.to(CFG.hitorder.device), yb.to(CFG.hitorder.device)
+                out = model(xb).squeeze()
+                loss = criterion(out, yb)
+                val_losses.append(loss.item())
+                preds.append((out > 0.5).cpu().numpy())
+                targets.append(yb.cpu().numpy())
 
-        acc = accuracy_score(val_true, val_preds)
-        bal_acc = balanced_accuracy_score(val_true, val_preds)
-        f1 = f1_score(val_true, val_preds)
+        preds = np.concatenate(preds)
+        targets = np.concatenate(targets)
+        acc = (preds == targets).mean()
+        val_loss = np.mean(val_losses)
 
-        logging.info(f"📊 Эпоха {epoch}: Train Loss={train_loss:.6f} | Val Loss={val_loss:.6f} | Acc={acc:.4f} | Balanced Acc={bal_acc:.4f} | F1={f1:.4f}")
+        logging.info(f"📊 Эпоха {epoch+1}: Train Loss={np.mean(train_losses):.6f} | Val Loss={val_loss:.6f} | Acc={acc:.4f}")
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
-
-            profile_safe = profile_column.replace(".", "_")
-            model_path = os.path.join(CFG.paths.models_dir, f"hitorder_{profile_safe}.pth")
+            model_path = os.path.join(CFG.paths.models_dir, f"hitorder_{label_col}.pth")
             torch.save(model.state_dict(), model_path)
             logging.info(f"🎯 Лучшая модель сохранена: {model_path}")
+
+# Основной запуск
+if __name__ == "__main__":
+    df = pd.read_parquet(CFG.paths.feature_dataset_path)
+    scaler = joblib.load(CFG.paths.scaler_path)
+    feature_cols = joblib.load(CFG.paths.feature_columns_path)
+    df[feature_cols] = scaler.transform(df[feature_cols])
+
+    for sl in CFG.label_generation.hitorder_sl_list:
+        for rr in CFG.label_generation.hitorder_rr_list:
+            train_one_profile(df, (sl, rr), feature_cols)

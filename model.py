@@ -1,105 +1,47 @@
+import torch
 import torch.nn as nn
 
-# ======================================
-# Directional Model (Transformer Head)
-# ======================================
-
-class DirectionalModel(nn.Module):
-    def __init__(self, model_config):
-        super(DirectionalModel, self).__init__()
-
-        self.input_proj = nn.Linear(model_config.input_dim, model_config.hidden_dim)
-
-        encoder_layer = nn.TransformerEncoderLayer(
-            d_model=model_config.hidden_dim,
-            nhead=model_config.n_heads,
-            dim_feedforward=model_config.dim_feedforward,
-            activation=model_config.activation,
-            layer_norm_eps=model_config.layer_norm_eps,
-            dropout=model_config.dropout,
-            batch_first=True
-        )
-        self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=model_config.n_layers)
-
-        self.output_head = nn.Sequential(
-            nn.Linear(model_config.hidden_dim, model_config.hidden_dim),
-            nn.ReLU(),
-            nn.Linear(model_config.hidden_dim, 3)  # 3 класса: short, neutral, long
-        )
-
-    def forward(self, x):
-        x = self.input_proj(x)
-        x = self.transformer_encoder(x)
-        x = x[:, -1, :]  # берём последнее значение окна
-        x = self.output_head(x)
-        return x
-
-# ======================================
-# Amplitude Model (Quantile Head V4.0)
-# ======================================
-
-
-class AmplitudeModel(nn.Module):
-    def __init__(self, input_size):
+# Дирекционная модель (многоклассовая классификация)
+class DirectionClassifier(nn.Module):
+    def __init__(self, input_dim, hidden_dim=256, num_classes=3):
         super().__init__()
-        self.shared = nn.Sequential(
-            nn.Linear(input_size, 512),
+        self.model = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
             nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(512, 256),
+            nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(256, 128),
-            nn.ReLU()
-        )
-
-        self.scale_up = 0.15  # максимально возможное значение вверх
-        self.scale_down = 0.02  # максимально возможное значение вниз
-
-        self.up_p10_head = nn.Sequential(
-            nn.Linear(128, 1),
-            nn.Tanh()
-        )
-        self.up_p90_head = nn.Sequential(
-            nn.Linear(128, 1),
-            nn.Tanh()
-        )
-        self.down_p10_head = nn.Sequential(
-            nn.Linear(128, 1),
-            nn.Tanh()
-        )
-        self.down_p90_head = nn.Sequential(
-            nn.Linear(128, 1),
-            nn.Tanh()
+            nn.Linear(hidden_dim, num_classes)
         )
 
     def forward(self, x):
-        shared_out = self.shared(x)
-        up_p10 = self.up_p10_head(shared_out) * self.scale_up
-        up_p90 = self.up_p90_head(shared_out) * self.scale_up
-        down_p10 = self.down_p10_head(shared_out) * self.scale_down
-        down_p90 = self.down_p90_head(shared_out) * self.scale_down
-        return up_p10, up_p90, down_p10, down_p90
+        return self.model(x)
 
-# ======================================
-# HitOrderClassifier с параметрами сделки
-# ======================================
+# Амплитудная модель (многомерная регрессия)
+class AmplitudeRegressor(nn.Module):
+    def __init__(self, input_dim, hidden_dim=256, output_dim=4):
+        super().__init__()
+        self.model = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, output_dim)
+        )
 
+    def forward(self, x):
+        return self.model(x)
+
+# HitOrder модель (бинарная классификация)
 class HitOrderClassifier(nn.Module):
-    def __init__(self, input_size):
+    def __init__(self, input_dim, hidden_dim=128):
         super().__init__()
-
-        self.net = nn.Sequential(
-            nn.Linear(input_size, 512),
+        self.model = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
             nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(512, 256),
+            nn.Linear(hidden_dim, hidden_dim//2),
             nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(256, 64),
-            nn.ReLU(),
-            nn.Linear(64, 1)  # выход без Sigmoid — работаем с логитами
+            nn.Linear(hidden_dim//2, 1)
         )
 
     def forward(self, x):
-        return self.net(x)
+        return self.model(x)

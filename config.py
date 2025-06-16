@@ -12,6 +12,7 @@ class CFG:
         hit_order_model_path = base / "artifacts" / "model_30m" / "hit_order_model.pth"
         temperature_path = base / "artifacts" / "model_30m" / "temperature.joblib"
         feature_columns_path = base / "artifacts" / "model_30m" / "features.joblib"
+        models_dir = base / "artifacts" / "model_30m"
 
     class train:
         lr = 3e-4
@@ -42,17 +43,25 @@ class CFG:
         sl_max = 0.02
         sl_step = 0.001
 
+    class hitorder:
+        lr = 1e-3
+        batch_size = 1024
+        epochs = 50
+        early_stopping_patience = 10
+
     class label_generation:
+        direction_lookahead = 10  # в свечах
+        amplitude_lookahead = 10  # в свечах
+        hitorder_lookahead = 10  # в свечах
+
         direction_threshold = 0.015
+
         amplitude_min_sl = 0.005
         amplitude_max_sl = 0.02
         amplitude_max_tp = 0.15
-        hit_order_sl_min = 0.005
-        hit_order_sl_max = 0.02
-        hit_order_rr_min = 2.0
-        hit_order_rr_max = 6.0
-        hit_order_sl_step = 0.005
-        hit_order_rr_step = 0.5
+
+        hitorder_sl_list = [0.005, 0.01, 0.015, 0.02]
+        hitorder_rr_list = [1.0, 1.5, 2.0, 2.5, 3.0]
 
     class feature_engineering:
         default_shift = 1

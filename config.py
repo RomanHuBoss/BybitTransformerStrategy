@@ -47,12 +47,12 @@ class CFG:
         sl_step = 0.001
 
     class hitorder:
-        lr = 1e-3
-        batch_size = 1024
-        epochs = 50
-        early_stopping_patience = 30
+        lr = 9e-2
+        batch_size = 2048
+        epochs = 500
+        early_stopping_patience = 200
         device = "cuda"  # или "cpu"
-        val_size = 0.1
+        val_size = 0.2
 
     class label_generation:
         direction_lookahead = 10  # в свечах

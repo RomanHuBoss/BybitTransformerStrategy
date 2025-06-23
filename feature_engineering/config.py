@@ -1,13 +1,17 @@
 # config.py
 
 from dataclasses import dataclass, field
+from pathlib import Path
+import os
 
+ENV_MODE = os.getenv("ENV_MODE", "dev")
 
 @dataclass
 class PathConfig:
-    raw_csv: str  = "../historical_data/BTC-ETH-COMBINED/combined_csv.csv"     # сырой csv, содержащий OCLHV
-    features_columns_path: str = "artifacts/features/feature_columns.pkl"   # колонки фич
-    features_scaler_path: str = "artifacts/feature_scaler.pkl"              # скейлер фич
+    base = Path("../")
+    raw_csv: str  = base / "historical_data" / "BTC-ETH-COMBINED" / "combined_csv.csv"     # сырой csv, содержащий OCLHV
+    features_columns_path: str = base / "artifacts" / "features" / "feature_columns.pkl"   # колонки фич
+    features_scaler_path: str = base / "artifacts" / "features" / "feature_scaler.pkl"                  # скейлер фич
 
 @dataclass
 class AssetConfig:

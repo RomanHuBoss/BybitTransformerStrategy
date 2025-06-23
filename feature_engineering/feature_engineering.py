@@ -273,9 +273,11 @@ class FeatureEngineer:
         else:
             # При инференсе: загружаем колонками и восстанавливаем недостающие
             self.features_columns = joblib.load(CFG.paths.features_columns_path)
+
             for col in self.features_columns:
                 if col not in features_df.columns:
                     features_df[col] = np.nan
+
             features_df = features_df[self.features_columns]
             features_df.fillna(0, inplace=True)
 

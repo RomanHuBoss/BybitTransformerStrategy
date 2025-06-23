@@ -34,13 +34,21 @@ class FeatureEngineer:
     def __generate_features(self, df: pd.DataFrame, fit: bool = True, use_logging: bool = True) -> pd.DataFrame:
         self.__reset()
 
+        if not fit:
+            if not os.path.exists(CFG.paths.feature_columns_path):
+                raise FileNotFoundError(f"Модель признаков не обучена – отсутствуют сохранённые столбцы {CFG.paths.feature_columns_path}")
+
+            if not os.path.exists(CFG.paths.features_scaler_path):
+                raise FileNotFoundError(f"Модель признаков не обучена – отсутствует сохранённый скейлер {CFG.paths.features_scaler_path}")
+
+
         if not all(col in df.columns for col in CFG.assets.required_columns):
             raise ValueError(f"Input DataFrame must contain columns: {CFG.assets.required_columns}")
 
         # удаляем лишние колонки
         df = df.copy()[CFG.assets.required_columns]
 
-        df['open_time'] = pd.to_datetime(df['open_time'])
+        df['open_time'] = pd.to_datetime(df['open_time'], unit='ns')
         shift = CFG.feature_engineering.default_shift
 
         for col in ['open', 'high', 'low', 'close', 'volume']:
@@ -211,9 +219,6 @@ class FeatureEngineer:
         features['vol_ratio_5_20'] = (features['vol_std_5'] / (features['vol_std_20'] + 1e-8)).shift(shift)
         features['vol_ratio_10_50'] = (features['vol_std_10'] / (features['vol_std_50'] + 1e-8)).shift(shift)
 
-        # Momentum indicators
-        features['momentum_10'] = (df['close'] - df['close'].shift(10)).shift(shift)
-
         # RSI + StochRSI
         rsi_window = 14
         stoch_window = 14
@@ -263,15 +268,19 @@ class FeatureEngineer:
         # --- Обработка признаков: сохранение или восстановление ---
         if fit:
             self.features_columns = features_df.columns.tolist()
+            os.makedirs(os.path.dirname(CFG.paths.feature_columns_path), exist_ok=True)
             joblib.dump(self.features_columns, CFG.paths.feature_columns_path)
         else:
             # При инференсе: загружаем колонками и восстанавливаем недостающие
-            self.features_columns = joblib.load(CFG.paths.feature_columns_path)
-            for col in self.features_columns:
-                if col not in features_df.columns:
-                    features_df[col] = np.nan
-            features_df = features_df[self.features_columns]
-            features_df.fillna(0, inplace=True)
+            if os.path.exists(CFG.paths.feature_columns_path):
+                self.features_columns = joblib.load(CFG.paths.feature_columns_path)
+                for col in self.features_columns:
+                    if col not in features_df.columns:
+                        features_df[col] = np.nan
+                features_df = features_df[self.features_columns]
+                features_df.fillna(0, inplace=True)
+            else:
+                raise FileNotFoundError(f"Модель признаков не обучена – отсутствуют сохранённые столбцы {CFG.paths.feature_columns_path}")
 
         # --- Стандартизация ---
         X = features_df
@@ -279,10 +288,14 @@ class FeatureEngineer:
         if fit:
             self.features_scaler = StandardScaler()
             X_scaled = self.features_scaler.fit_transform(X)
+            os.makedirs(os.path.dirname(CFG.paths.features_scaler_path), exist_ok=True)
             joblib.dump(self.features_scaler, CFG.paths.features_scaler_path)
         else:
-            self.features_scaler = joblib.load(CFG.paths.features_scaler_path)
-            X_scaled = self.features_scaler.transform(X)
+            if os.path.exists(CFG.paths.features_scaler_path):
+                self.features_scaler = joblib.load(CFG.paths.features_scaler_path)
+                X_scaled = self.features_scaler.transform(X)
+            else:
+                raise FileNotFoundError(f"Модель признаков не обучена – отсутствует сохранённый скейлер {CFG.paths.features_scaler_path}")
 
         return pd.DataFrame(X_scaled, columns=self.features_columns, index=features_df.index)
 
@@ -293,6 +306,6 @@ class FeatureEngineer:
             data.append(window)
         return np.array(data)
 
-if __name__ == "main":
+if __name__ == "__main__":
     feature_engineering = FeatureEngineer()
-    feature_engineering.generate_features()
+    feature_engineering.generate_from_raw_csv()

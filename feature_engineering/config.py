@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 
 @dataclass
 class PathConfig:
-    raw_csv: str  = "historical_data/BTC-ETH-COMBINED/combined_csv.csv"     # сырой csv, содержащий OCLHV
+    raw_csv: str  = "../historical_data/BTC-ETH-COMBINED/combined_csv.csv"     # сырой csv, содержащий OCLHV
     features_columns_path: str = "artifacts/features/feature_columns.pkl"   # колонки фич
     features_scaler_path: str = "artifacts/feature_scaler.pkl"              # скейлер фич
 

@@ -35,8 +35,8 @@ class FeatureEngineer:
         self.__reset()
 
         if not fit:
-            if not os.path.exists(CFG.paths.feature_columns_path):
-                raise FileNotFoundError(f"Модель признаков не обучена – отсутствуют сохранённые столбцы {CFG.paths.feature_columns_path}")
+            if not os.path.exists(CFG.paths.features_columns_path):
+                raise FileNotFoundError(f"Модель признаков не обучена – отсутствуют сохранённые столбцы {CFG.paths.features_columns_path}")
 
             if not os.path.exists(CFG.paths.features_scaler_path):
                 raise FileNotFoundError(f"Модель признаков не обучена – отсутствует сохранённый скейлер {CFG.paths.features_scaler_path}")
@@ -268,19 +268,16 @@ class FeatureEngineer:
         # --- Обработка признаков: сохранение или восстановление ---
         if fit:
             self.features_columns = features_df.columns.tolist()
-            os.makedirs(os.path.dirname(CFG.paths.feature_columns_path), exist_ok=True)
-            joblib.dump(self.features_columns, CFG.paths.feature_columns_path)
+            os.makedirs(os.path.dirname(CFG.paths.features_columns_path), exist_ok=True)
+            joblib.dump(self.features_columns, CFG.paths.features_columns_path)
         else:
             # При инференсе: загружаем колонками и восстанавливаем недостающие
-            if os.path.exists(CFG.paths.feature_columns_path):
-                self.features_columns = joblib.load(CFG.paths.feature_columns_path)
-                for col in self.features_columns:
-                    if col not in features_df.columns:
-                        features_df[col] = np.nan
-                features_df = features_df[self.features_columns]
-                features_df.fillna(0, inplace=True)
-            else:
-                raise FileNotFoundError(f"Модель признаков не обучена – отсутствуют сохранённые столбцы {CFG.paths.feature_columns_path}")
+            self.features_columns = joblib.load(CFG.paths.features_columns_path)
+            for col in self.features_columns:
+                if col not in features_df.columns:
+                    features_df[col] = np.nan
+            features_df = features_df[self.features_columns]
+            features_df.fillna(0, inplace=True)
 
         # --- Стандартизация ---
         X = features_df
@@ -291,11 +288,8 @@ class FeatureEngineer:
             os.makedirs(os.path.dirname(CFG.paths.features_scaler_path), exist_ok=True)
             joblib.dump(self.features_scaler, CFG.paths.features_scaler_path)
         else:
-            if os.path.exists(CFG.paths.features_scaler_path):
-                self.features_scaler = joblib.load(CFG.paths.features_scaler_path)
-                X_scaled = self.features_scaler.transform(X)
-            else:
-                raise FileNotFoundError(f"Модель признаков не обучена – отсутствует сохранённый скейлер {CFG.paths.features_scaler_path}")
+            self.features_scaler = joblib.load(CFG.paths.features_scaler_path)
+            X_scaled = self.features_scaler.transform(X)
 
         return pd.DataFrame(X_scaled, columns=self.features_columns, index=features_df.index)
 

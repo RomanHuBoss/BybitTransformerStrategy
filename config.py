@@ -1,97 +1,49 @@
+# Models/direction/config.py
+
+from dataclasses import dataclass, field
 from pathlib import Path
+import os
 
-class CFG:
+ENV_MODE = os.getenv("ENV_MODE", "dev")
 
-    class paths:
-        base = Path("./")
-        train_csv = base / "historical_data" / "LEARN" / "combined_csv.csv"
-        train_features_csv = base / "artifacts" / "model_30m" / "train_features.csv"
-        scaler_path = base / "artifacts" / "model_30m" / "direction_scaler.joblib"
-        direction_model_path = base / "artifacts" / "model_30m" / "direction_model.pth"
-        amplitude_model_path = base / "artifacts" / "model_30m" / "amplitude_model.pth"
-        hit_order_model_path = base / "artifacts" / "model_30m" / "hit_order_model.pth"
-        temperature_path = base / "artifacts" / "model_30m" / "temperature.joblib"
-        feature_columns_path = base / "artifacts" / "model_30m" / "features.joblib"
-        models_dir = base / "artifacts" / "model_30m"
+@dataclass
+class PathConfig:
+    base: Path = Path("Models/direction")
+    data_path: Path = Path("data/binance_30m.csv")
+    scaler_path: Path = base / "scaler.pkl"
+    model_path: Path = base / "model.pth"
 
-        data_path = train_csv  # или укажи путь если другой файл
-        feature_dataset_path = base / "artifacts" / "model_30m" / "full_dataset.parquet"
+@dataclass
+class MarketConfig:
+    lookahead_bars: int = 10               # сколько свечей смотреть вперёд
+    min_tp_percent: float = 1.5            # минимальный процент пробоя от close
 
-    class train:
-        lr = 3e-4
-        batch_size = 512
-        epochs = 500
-        early_stopping_patience = 100
-        val_size = 0.1
-        focal_gamma = 2.0
+@dataclass
+class ArchitectureConfig:
+    input_size: int = 6                    # OCHLV + объём
+    hidden_size: int = 64
+    num_layers: int = 2
+    dropout: float = 0.3
 
-    class inference:
-        update_interval = 120
-        api_port = 8000
+@dataclass
+class TrainingConfig:
+    train_size: float = 0.8
+    val_size: float = 0.1
+    batch_size: int = 512
+    learning_rate: float = 1e-4
+    epochs: int = 100
+    early_stopping_patience: int = 10
 
-    class assets:
-        symbols = ["BTCUSDT", "ETHUSDT", "XRPUSDT", "SOLUSDT"]
-        timeframe = 30
-        limit = 1000
+@dataclass
+class PreprocessingConfig:
+    drop_columns: list = field(default_factory=lambda: ['label', 'timestamp', 'symbol'])
 
-    class hybrid:
-        min_amplitude = 0.002
-        spread_threshold = 0.05
-        dynamic_threshold_alpha = 1.0
+@dataclass
+class DirectionConfig:
+    paths: PathConfig = field(default_factory=PathConfig)
+    market: MarketConfig = field(default_factory=MarketConfig)
+    arch: ArchitectureConfig = field(default_factory=ArchitectureConfig)
+    train: TrainingConfig = field(default_factory=TrainingConfig)
+    pre: PreprocessingConfig = field(default_factory=PreprocessingConfig)
 
-    class labels:
-        lookahead = 10
-        rr_min = 2
-        sl_min = 0.005
-        sl_max = 0.02
-        sl_step = 0.001
-
-    class hitorder:
-        lr = 9e-2
-        batch_size = 2048
-        epochs = 500
-        early_stopping_patience = 200
-        device = "cuda"  # или "cpu"
-        val_size = 0.2
-
-    class label_generation:
-        direction_lookahead = 10  # в свечах
-        amplitude_lookahead = 10  # в свечах
-        hitorder_lookahead = 10  # в свечах
-
-        direction_threshold = 0.015
-
-        amplitude_min_sl = 0.005
-        amplitude_max_sl = 0.02
-        amplitude_max_tp = 0.15
-
-        hitorder_sl_list = [0.005, 0.01, 0.015, 0.02]
-        hitorder_rr_list = [1.0, 1.5, 2.0, 2.5, 3.0]
-
-    class feature_engineering:
-        default_shift = 1
-        window_size = 30
-
-    class snapshot:
-        history_depth = 100
-
-    class action2label:
-        mapping = {
-            "short": 0,
-            "no-trade": 1,
-            "long": 2
-        }
-
-    class amplitude:
-        log_eps = 1e-6
-        loss_weights = [0.4, 0.1, 0.4, 0.1]
-
-    class ModelConfig:
-        input_dim = None
-        hidden_dim = 128
-        n_layers = 2
-        n_heads = 4
-        dim_feedforward = 256
-        activation = 'gelu'
-        dropout = 0.1
-        layer_norm_eps = 1e-5
+CFG = DirectionConfig()
